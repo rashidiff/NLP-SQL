@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import dataclass
 from importlib import resources
+from pathlib import Path
 from typing import Any
 
 
@@ -69,6 +71,38 @@ class SchemaRegistry:
             raw_schema = json.load(file)
         return cls.from_dict(raw_schema)
 
+    @classmethod
+    def from_sqlite(
+        cls,
+        db_path: Path,
+        table_aliases: dict[str, tuple[str, ...]] | None = None,
+        column_aliases: dict[str, tuple[str, ...]] | None = None,
+    ) -> SchemaRegistry:
+        table_aliases = table_aliases or {}
+        column_aliases = column_aliases or {}
+        tables: dict[str, Table] = {}
+        with sqlite3.connect(db_path) as connection:
+            table_rows = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+            for (table_name,) in table_rows:
+                columns: dict[str, Column] = {}
+                for _, column_name, sqlite_type, *_ in connection.execute(
+                    f"PRAGMA table_info({table_name})"
+                ):
+                    aliases = _column_aliases(column_name, column_aliases.get(column_name, ()))
+                    columns[column_name] = Column(
+                        name=column_name,
+                        type=_map_sqlite_type(column_name, sqlite_type),
+                        aliases=aliases,
+                    )
+                tables[table_name] = Table(
+                    name=table_name,
+                    aliases=_table_aliases(table_name, table_aliases.get(table_name, ())),
+                    columns=columns,
+                )
+        return cls(tables)
+
     @property
     def tables(self) -> dict[str, Table]:
         return dict(self._tables)
@@ -114,3 +148,24 @@ class SchemaRegistry:
                 for alias in (column.name, *column.aliases):
                     aliases.setdefault(alias.lower(), []).append(ref)
         return {alias: tuple(refs) for alias, refs in aliases.items()}
+
+
+def _table_aliases(table_name: str, configured: tuple[str, ...]) -> tuple[str, ...]:
+    readable = table_name.replace("_", " ")
+    return tuple(dict.fromkeys((table_name, readable, *configured)))
+
+
+def _column_aliases(column_name: str, configured: tuple[str, ...]) -> tuple[str, ...]:
+    readable = column_name.replace("_", " ")
+    return tuple(dict.fromkeys((column_name, readable, *configured)))
+
+
+def _map_sqlite_type(column_name: str, sqlite_type: str) -> str:
+    if column_name.endswith("_date") or column_name in {"date", "created_at", "sale_date"}:
+        return "datetime"
+    normalized = sqlite_type.upper()
+    if "INT" in normalized:
+        return "integer"
+    if "REAL" in normalized or "FLOA" in normalized or "DOUB" in normalized or "NUM" in normalized:
+        return "decimal"
+    return "string"
