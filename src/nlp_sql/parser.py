@@ -277,6 +277,8 @@ class RuleBasedParser:
             if column is None:
                 continue
             value = self._coerce_value_for_column(source, column, value_text)
+            if value is None:
+                continue
             predicates.append(Predicate(column, operator, value))
 
         unique: dict[tuple[str, str, str], Predicate] = {}
@@ -363,12 +365,13 @@ class RuleBasedParser:
                 best_position = position
         return best_column
 
-    def _coerce_value_for_column(self, source: str, column: str, raw_value: str) -> object:
+    def _coerce_value_for_column(self, source: str, column: str, raw_value: str) -> object | None:
         column_meta = self._schema.get_column(source, column)
         if column_meta is not None and column_meta.type in {"integer", "decimal"}:
             numeric = re.search(r"\d+(?:\.\d+)?", raw_value)
             if numeric:
                 return self._coerce_numeric(numeric.group(0))
+            return None
         return raw_value.strip()
 
     def _coerce_numeric(self, value: str) -> int | float:
@@ -393,7 +396,9 @@ class RuleBasedParser:
             or ("bottom" in text and limit is not None)
         ):
             source = self._resolve_source(text)
-            resolved_column = self._resolve_column_in_text(text, source) if source else None
+            resolved_column = self._explicit_order_column(text, source) if source else None
+            if resolved_column is None and source is not None:
+                resolved_column = self._resolve_column_in_text(text, source)
             if aggregation is not None and (
                 "spending" in text or "revenue" in text or "sales" in text
             ):
@@ -503,6 +508,16 @@ class RuleBasedParser:
         for candidate in self._schema.resolve_column(phrase, table=source):
             return candidate.column
         return None
+
+    def _explicit_order_column(self, text: str, source: str | None) -> str | None:
+        if source is None:
+            return None
+        match = re.search(
+            r"\b(?:sort by|order by|by)\s+(.+?)(?:\s+(?:ascending|descending)|$)", text
+        )
+        if match is None:
+            return None
+        return self._resolve_column_in_text(match.group(1), source)
 
     def _is_select_all(self, text: str) -> bool:
         return bool(
