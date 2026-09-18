@@ -51,7 +51,8 @@ _SCALES: dict[str, Decimal] = {
     "billion": Decimal(1_000_000_000),
 }
 
-_ALLOWED_WORDS = set(_UNITS) | set(_TENS) | set(_SCALES) | {"and", "a", "half"}
+NUMBER_WORDS = frozenset(set(_UNITS) | set(_TENS) | set(_SCALES) | {"and", "a", "half"})
+_ALLOWED_WORDS = set(NUMBER_WORDS)
 _NUMERIC_RE = re.compile(
     r"^\$?(?P<number>\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)"
     r"(?:\s*(?P<scale>thousand|million|billion))?$",
