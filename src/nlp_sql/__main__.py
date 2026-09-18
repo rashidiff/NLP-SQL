@@ -1,6 +1,6 @@
-"""Command-line entrypoint for the NLP-SQL HTTP API."""
+"""Command-line entrypoint for NLP-SQL."""
 
-from nlp_sql.api import run
+from nlp_sql.cli import main
 
 if __name__ == "__main__":
-    run()
+    main()

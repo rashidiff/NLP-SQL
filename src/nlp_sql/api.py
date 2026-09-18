@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any
 
 from nlp_sql.engine import NlpSqlEngine
@@ -62,8 +63,13 @@ class NlpSqlRequestHandler(BaseHTTPRequestHandler):
         return
 
 
-def run(host: str = "127.0.0.1", port: int = 8000, use_housing: bool = True) -> None:
+def run(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    use_housing: bool = True,
+    db_path: Path = Path("data/housing.sqlite"),
+) -> None:
     if use_housing:
-        NlpSqlRequestHandler.engine = NlpSqlEngine.for_housing_dataset()
+        NlpSqlRequestHandler.engine = NlpSqlEngine.for_housing_dataset(db_path=db_path)
     server = HTTPServer((host, port), NlpSqlRequestHandler)
     server.serve_forever()

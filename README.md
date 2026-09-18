@@ -7,6 +7,60 @@ services.
 English business queries are normalized, tokenized, parsed into a typed Query
 AST, validated against a schema registry, and compiled into parameterized SQL.
 
+## Quick Start
+
+From a fresh clone:
+
+```bash
+git clone https://github.com/rashidiff/NLP-SQL.git
+cd NLP-SQL
+python -m venv .venv
+```
+
+Activate the virtual environment:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+```
+
+Install the project:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Download the Kaggle dataset and build the local SQLite database:
+
+```bash
+nlp-sql prepare-data
+```
+
+Run a real natural-language query against the real SQLite database:
+
+```bash
+nlp-sql query "show top 5 properties by sale price"
+```
+
+Other useful commands:
+
+```bash
+nlp-sql parse "show properties with bedrooms at least 4"
+nlp-sql explain "average sale price"
+nlp-sql serve
+```
+
+The default database path is `data/housing.sqlite`. To use another location:
+
+```bash
+nlp-sql prepare-data --db C:\temp\housing.sqlite
+nlp-sql query "show properties built after 2000" --db C:\temp\housing.sqlite
+```
+
 ## Project Overview
 
 The first version supports a deliberately small grammar for customer/order
@@ -71,7 +125,8 @@ the same semantic representation without changing validation or SQL compilation.
 python -m pip install -e ".[dev]"
 ```
 
-The runtime currently uses only the Python standard library.
+The runtime uses the Python standard library plus `kagglehub` for downloading
+the Kaggle dataset.
 
 ## Configuration
 
@@ -88,7 +143,7 @@ not scattered through controllers or SQL compilation.
 ## Running the Application
 
 ```bash
-python -m nlp_sql
+nlp-sql serve
 ```
 
 The server listens on `127.0.0.1:8000`. By default, the command-line server
