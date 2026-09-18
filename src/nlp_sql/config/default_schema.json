@@ -1,0 +1,52 @@
+{
+  "customers": {
+    "aliases": ["customer", "customers", "client", "clients", "buyer", "buyers"],
+    "columns": {
+      "id": {
+        "type": "integer",
+        "aliases": ["id", "customer id", "client id"]
+      },
+      "name": {
+        "type": "string",
+        "aliases": ["name", "customer name", "client name"]
+      },
+      "created_at": {
+        "type": "datetime",
+        "aliases": ["created", "created at", "creation date", "signup date"]
+      }
+    }
+  },
+  "orders": {
+    "aliases": ["order", "orders", "purchase", "purchases", "sale", "sales"],
+    "columns": {
+      "id": {
+        "type": "integer",
+        "aliases": ["id", "order id", "purchase id"]
+      },
+      "customer_id": {
+        "type": "integer",
+        "aliases": ["customer id", "client id", "buyer id", "customer"]
+      },
+      "amount": {
+        "type": "decimal",
+        "aliases": [
+          "amount",
+          "purchase amount",
+          "order amount",
+          "sales amount",
+          "revenue",
+          "sales",
+          "spending",
+          "total spending",
+          "purchase",
+          "spent"
+        ]
+      },
+      "created_at": {
+        "type": "datetime",
+        "aliases": ["created", "created at", "order date", "purchase date", "date"]
+      }
+    }
+  }
+}
+
