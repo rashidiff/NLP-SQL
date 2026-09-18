@@ -1,8 +1,239 @@
 # NLP-SQL
 
-Deterministic, rule-based natural-language to SQL engine.
+NLP-SQL is a deterministic, rule-based Natural Language to SQL engine. It does
+not use LLMs, embeddings, vector databases, generative AI, or external AI
+services.
 
-This project intentionally does not use LLMs, embeddings, vector databases, or
-external AI services. English business queries are normalized and parsed into a
-typed Query AST, validated, and then compiled into parameterized SQL.
+English business queries are normalized, tokenized, parsed into a typed Query
+AST, validated against a schema registry, and compiled into parameterized SQL.
 
+## Project Overview
+
+The first version supports a deliberately small grammar for customer/order
+analytics:
+
+- Selecting configured tables.
+- Filtering numeric metrics such as order amount and revenue.
+- Counting, summing, averaging, minimum, and maximum aggregations.
+- Grouping by customer and month-oriented fields.
+- Date ranges such as today, yesterday, last month, last 7 days, and explicit
+  month/day/year bounds.
+- Sorting and limits.
+- Explain mode for deterministic interpretation details.
+
+Unsupported or ambiguous requests are rejected instead of guessed.
+
+## Architecture
+
+```text
+Natural Language Query
+        ↓
+Text Normalizer
+        ↓
+Tokenizer / Phrase Matcher
+        ↓
+Intent Detector / Entity Extractor
+        ↓
+Schema Resolver
+        ↓
+Semantic Query AST
+        ↓
+AST Validator
+        ↓
+SQL Compiler
+        ↓
+SQL Safety Validator
+        ↓
+Optional Database Executor
+```
+
+The parser never emits raw SQL. The central contract is
+`nlp_sql.query_ast.QueryAST`, which lets a future parser implementation produce
+the same semantic representation without changing validation or SQL compilation.
+
+## Installation
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+The runtime currently uses only the Python standard library.
+
+## Configuration
+
+Schema and aliases live in:
+
+```text
+src/nlp_sql/config/default_schema.json
+```
+
+This file defines whitelisted tables, columns, types, and aliases. Parser logic
+resolves table and column phrases through `SchemaRegistry`; schema aliases are
+not scattered through controllers or SQL compilation.
+
+## Running the Application
+
+```bash
+python -m nlp_sql
+```
+
+The server listens on `127.0.0.1:8000`.
+
+## Running Tests
+
+```bash
+python -m ruff format .
+python -m ruff check .
+python -m mypy
+python -m pytest
+```
+
+## API Documentation
+
+### `POST /parse`
+
+Request:
+
+```json
+{
+  "query": "Show customers who spent more than 5 million"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "ast": {},
+  "sql": "SELECT customer_id, SUM(amount) AS total_purchase FROM orders GROUP BY customer_id HAVING SUM(amount) > ?",
+  "parameters": [5000000]
+}
+```
+
+### `POST /explain`
+
+Request:
+
+```json
+{
+  "query": "Show the top 5 customers by total spending this month"
+}
+```
+
+Response includes `interpretation` and `matched_rules`, but no SQL execution.
+
+## Supported Natural Language Queries
+
+Examples covered by tests include:
+
+- `Show all customers`
+- `Show all orders`
+- `Show orders above 5 million`
+- `Show orders between 100 and 500`
+- `How many orders were placed today?`
+- `What is the total revenue this month?`
+- `Show customers who spent more than 10000`
+- `Show the 5 customers with the highest total spending`
+- `Show the latest 20 orders`
+- `Sort customers by name ascending`
+- `Count orders per customer`
+- `Show orders after January 1 2026`
+- `Show orders between January 1 2026 and January 31 2026`
+
+## Query AST
+
+The AST is strongly typed with dataclasses:
+
+- `QueryAST`
+- `ColumnExpression`
+- `AggregationExpression`
+- `Predicate`
+- `DateRangePredicate`
+- `HavingPredicate`
+- `OrderBy`
+
+Values are stored as data, not SQL fragments.
+
+## Schema Registry
+
+`SchemaRegistry` loads configured table and column metadata, resolves aliases,
+and provides whitelist checks to validators and parsers.
+
+## Adding Tables
+
+Add a table entry to `default_schema.json`:
+
+```json
+{
+  "products": {
+    "aliases": ["product", "products"],
+    "columns": {
+      "id": {"type": "integer"},
+      "name": {"type": "string"}
+    }
+  }
+}
+```
+
+## Adding Columns
+
+Add the column under the table with a type and aliases:
+
+```json
+"amount": {
+  "type": "decimal",
+  "aliases": ["revenue", "sales amount", "order amount"]
+}
+```
+
+## Adding Synonyms
+
+Add aliases in schema metadata. For example, to support `turnover` as revenue,
+add it to `orders.columns.amount.aliases`.
+
+## Adding Operators
+
+Phrase-level operators are configured in `tokenizer.DEFAULT_PHRASE_RULES`.
+Single-word amount operators are in `RuleBasedParser._OPERATOR_WORDS`.
+
+## Adding Aggregations
+
+Aggregation phrases are centralized in `RuleBasedParser._AGGREGATION_RULES` and
+validated against `SUPPORTED_AGGREGATIONS`.
+
+## Adding Date Expressions
+
+Add deterministic phrase handling in `DateExpressionParser`. Date parsing
+resolves to explicit start/end dates before SQL compilation.
+
+## Adding SQL Dialects
+
+Create a new `SqlDialect` subclass and pass it to `SqlCompiler`. The AST and
+validator remain unchanged.
+
+## Security Model
+
+- Read-only queries only.
+- Forbidden write/DDL keywords are rejected.
+- Tables and columns must exist in the schema registry.
+- Operators and aggregations are whitelisted.
+- User values are parameterized with `?` placeholders.
+- The compiler only accepts validated AST nodes.
+- The generated SQL is checked for forbidden keywords and semicolons.
+
+## Known Limitations
+
+- This is not a general English parser.
+- Joins are not yet modeled.
+- Grouping by month currently groups by the configured date column directly.
+- The default schema only includes `customers` and `orders`.
+- The API does not execute SQL; execution should be added as a separate layer.
+
+## Roadmap
+
+- Add explicit join AST nodes.
+- Add richer date bucketing such as `DATE_TRUNC`.
+- Add more dialects.
+- Add configurable parser-rule files.
+- Add optional database execution behind the existing parse/compile boundary.
