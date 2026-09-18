@@ -23,6 +23,11 @@ def handle_api_request(
         return HTTPStatus.OK, engine.parse(query).to_dict()
     if path == "/explain":
         return HTTPStatus.OK, engine.explain(query).to_dict()
+    if path == "/execute":
+        max_rows = payload.get("max_rows", 100)
+        if not isinstance(max_rows, int):
+            max_rows = 100
+        return HTTPStatus.OK, engine.execute(query, max_rows=max_rows).to_dict()
     return HTTPStatus.NOT_FOUND, {
         "success": False,
         "error": {"code": "NOT_FOUND", "message": "Endpoint not found."},
@@ -57,6 +62,8 @@ class NlpSqlRequestHandler(BaseHTTPRequestHandler):
         return
 
 
-def run(host: str = "127.0.0.1", port: int = 8000) -> None:
+def run(host: str = "127.0.0.1", port: int = 8000, use_housing: bool = True) -> None:
+    if use_housing:
+        NlpSqlRequestHandler.engine = NlpSqlEngine.for_housing_dataset()
     server = HTTPServer((host, port), NlpSqlRequestHandler)
     server.serve_forever()

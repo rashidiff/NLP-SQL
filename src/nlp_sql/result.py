@@ -35,6 +35,7 @@ class PipelineResult:
     requires_clarification: bool = False
     interpretation: dict[str, Any] | None = None
     matched_rules: tuple[str, ...] = ()
+    rows: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"success": self.success}
@@ -50,4 +51,6 @@ class PipelineResult:
             payload["interpretation"] = self.interpretation
         if self.matched_rules:
             payload["matched_rules"] = list(self.matched_rules)
+        if self.rows is not None:
+            payload["rows"] = self.rows
         return payload

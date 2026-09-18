@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -75,8 +76,8 @@ class SchemaRegistry:
     def from_sqlite(
         cls,
         db_path: Path,
-        table_aliases: dict[str, tuple[str, ...]] | None = None,
-        column_aliases: dict[str, tuple[str, ...]] | None = None,
+        table_aliases: Mapping[str, Sequence[str]] | None = None,
+        column_aliases: Mapping[str, Sequence[str]] | None = None,
     ) -> SchemaRegistry:
         table_aliases = table_aliases or {}
         column_aliases = column_aliases or {}
@@ -90,7 +91,9 @@ class SchemaRegistry:
                 for _, column_name, sqlite_type, *_ in connection.execute(
                     f"PRAGMA table_info({table_name})"
                 ):
-                    aliases = _column_aliases(column_name, column_aliases.get(column_name, ()))
+                    aliases = _column_aliases(
+                        column_name, tuple(column_aliases.get(column_name, ()))
+                    )
                     columns[column_name] = Column(
                         name=column_name,
                         type=_map_sqlite_type(column_name, sqlite_type),
@@ -98,7 +101,7 @@ class SchemaRegistry:
                     )
                 tables[table_name] = Table(
                     name=table_name,
-                    aliases=_table_aliases(table_name, table_aliases.get(table_name, ())),
+                    aliases=_table_aliases(table_name, tuple(table_aliases.get(table_name, ()))),
                     columns=columns,
                 )
         return cls(tables)

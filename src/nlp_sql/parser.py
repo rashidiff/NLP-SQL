@@ -57,6 +57,8 @@ class RuleBasedParser:
         "maximum": "<=",
         "equals": "=",
         "is": "=",
+        "after": ">",
+        "before": "<",
     }
     _DATE_BOUND_RE = re.compile(
         r"\b(?:after|before)\s+"
@@ -135,7 +137,7 @@ class RuleBasedParser:
             matched_rules.append("amount_filter")
 
         for date_range in self._date_parser.extract_ranges(normalized.text):
-            column = "created_at"
+            column = self._date_column(source)
             if self._schema.has_column(source, column):
                 filters.append(DateRangePredicate(column, date_range.start, date_range.end))
                 matched_rules.append(f"date:{date_range.rule}")
@@ -168,19 +170,32 @@ class RuleBasedParser:
         )
 
     def _resolve_source(self, text: str) -> str | None:
-        if "spent" in text or "spending" in text or "revenue" in text or "sales" in text:
+        if (
+            "spent" in text or "spending" in text or "revenue" in text or "sales" in text
+        ) and self._schema.has_table("orders"):
             return "orders"
         for phrase in _phrases(text, max_words=3):
             resolved = self._schema.resolve_table(phrase)
             if resolved is not None:
                 return resolved.canonical
+        column_tables = {
+            candidate.table
+            for phrase in _phrases(text, max_words=3)
+            for candidate in self._schema.resolve_column(phrase)
+        }
+        if len(column_tables) == 1:
+            return next(iter(column_tables))
         return None
 
     def _detect_aggregation(self, text: str, source: str) -> AggregationExpression | None:
         for phrase, function, column in self._AGGREGATION_RULES:
             if phrase in text:
-                if function == "COUNT" and source == "customers":
-                    column = "id"
+                if function == "COUNT":
+                    column = self._count_column(source)
+                elif resolved_column := self._resolve_column_in_text(text, source):
+                    column = resolved_column
+                elif not self._schema.has_column(source, column):
+                    column = self._default_metric_column(source) or column
                 alias = _aggregation_alias(function, column)
                 return AggregationExpression("aggregation", function, column, alias)
         if "spent" in text or "spending" in text:
@@ -199,6 +214,13 @@ class RuleBasedParser:
     def _detect_group_by(
         self, text: str, source: str, aggregation: AggregationExpression | None
     ) -> list[str]:
+        if any(keyword in text for keyword in ("top", "bottom", "order by", "sort by")):
+            return []
+        generic_group = re.search(r"\b(?:by|per)\s+([a-z_ ]+)$", text)
+        if generic_group:
+            column = self._resolve_column_phrase(generic_group.group(1), source)
+            if column is not None:
+                return [column]
         mentions_customer_group = (
             " per customer" in text
             or " by customer" in text
@@ -247,7 +269,10 @@ class RuleBasedParser:
             return None
         value_text = value_match.group(1)
         value: int | float = int(value_text) if value_text.isdigit() else float(value_text)
-        return Predicate("amount", operator, value)
+        column = self._predicate_column(text)
+        if column is None:
+            return None
+        return Predicate(column, operator, value)
 
     def _detect_order_by(
         self, text: str, aggregation: AggregationExpression | None, limit: int | None
@@ -267,13 +292,19 @@ class RuleBasedParser:
             or ("top" in text and limit is not None)
             or ("bottom" in text and limit is not None)
         ):
+            source = self._resolve_source(text)
+            resolved_column = self._resolve_column_in_text(text, source) if source else None
             if aggregation is not None and (
                 "spending" in text or "revenue" in text or "sales" in text
             ):
                 return [OrderBy(direction=direction, aggregation=aggregation)]
+            if resolved_column is not None:
+                return [OrderBy(column=resolved_column, direction=direction)]
             if "name" in text:
                 return [OrderBy(column="name", direction=direction)]
-            return [OrderBy(column="amount", direction=direction)]
+            return [
+                OrderBy(column=self._default_metric_column_from_text(text), direction=direction)
+            ]
         if "order by customer name" in text or "sort customers by name" in text:
             return [OrderBy(column="name", direction=direction)]
         return []
@@ -319,6 +350,57 @@ class RuleBasedParser:
                     interpretation["metric"] = predicate.column
                     break
         return interpretation
+
+    def _count_column(self, source: str) -> str:
+        for candidate in ("id", "unique_id"):
+            if self._schema.has_column(source, candidate):
+                return candidate
+        table = self._schema.tables[source]
+        return next(iter(table.columns))
+
+    def _default_metric_column(self, source: str) -> str | None:
+        for candidate in ("amount", "sale_price", "total_value", "value", "price"):
+            if self._schema.has_column(source, candidate):
+                return candidate
+        table = self._schema.tables.get(source)
+        if table is None:
+            return None
+        for column in table.columns.values():
+            if column.type in {"integer", "decimal"}:
+                return column.name
+        return None
+
+    def _default_metric_column_from_text(self, text: str) -> str:
+        source = self._resolve_source(text)
+        if source is None:
+            return "amount"
+        return self._default_metric_column(source) or "amount"
+
+    def _predicate_column(self, text: str) -> str | None:
+        source = self._resolve_source(text)
+        if source is None:
+            return None
+        if resolved := self._resolve_column_in_text(text, source):
+            return resolved
+        return self._default_metric_column(source)
+
+    def _resolve_column_in_text(self, text: str, source: str) -> str | None:
+        for phrase in _phrases(text, max_words=3):
+            column = self._resolve_column_phrase(phrase, source)
+            if column is not None:
+                return column
+        return None
+
+    def _resolve_column_phrase(self, phrase: str, source: str) -> str | None:
+        for candidate in self._schema.resolve_column(phrase, table=source):
+            return candidate.column
+        return None
+
+    def _date_column(self, source: str) -> str:
+        for candidate in ("created_at", "sale_date", "date"):
+            if self._schema.has_column(source, candidate):
+                return candidate
+        return "created_at"
 
 
 def _phrases(text: str, max_words: int) -> tuple[str, ...]:
