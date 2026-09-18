@@ -77,6 +77,13 @@ class SqlCompiler:
                 )
                 parameters.extend([start, end])
                 continue
+            if isinstance(predicate.value, str) and predicate.operator in {"=", "!="}:
+                clauses.append(
+                    f"LOWER({predicate.column}) {predicate.operator} "
+                    f"LOWER({self.dialect.placeholder})"
+                )
+                parameters.append(predicate.value)
+                continue
             clauses.append(f"{predicate.column} {predicate.operator} {self.dialect.placeholder}")
             parameters.append(predicate.value)
         return " AND ".join(clauses)

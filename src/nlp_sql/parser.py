@@ -116,25 +116,27 @@ class RuleBasedParser:
 
         select = self._build_select(normalized.text, source, aggregation)
         group_by = self._detect_group_by(normalized.text, source, aggregation)
-        amount_predicate = self._extract_amount_predicate(normalized.text, phrase_matches)
         filters: list[Predicate | DateRangePredicate] = []
         having: list[HavingPredicate] = []
-        if amount_predicate is not None:
+        for predicate in self._extract_predicates(normalized.text, source, phrase_matches):
             if (
                 group_by
                 and aggregation is not None
                 and aggregation.function in {"SUM", "AVG", "MIN", "MAX"}
+                and predicate.column == aggregation.column
             ):
                 having.append(
                     HavingPredicate(
-                        left=AggregationExpression("aggregation", aggregation.function, "amount"),
-                        operator=amount_predicate.operator,
-                        value=amount_predicate.value,
+                        left=AggregationExpression(
+                            "aggregation", aggregation.function, aggregation.column
+                        ),
+                        operator=predicate.operator,
+                        value=predicate.value,
                     )
                 )
             else:
-                filters.append(amount_predicate)
-            matched_rules.append("amount_filter")
+                filters.append(predicate)
+            matched_rules.append(f"filter:{predicate.column}")
 
         for date_range in self._date_parser.extract_ranges(normalized.text):
             column = self._date_column(source)
@@ -209,6 +211,9 @@ class RuleBasedParser:
             return [ColumnExpression("column", "customer_id")]
         if aggregation is not None:
             return []
+        requested_columns = self._columns_in_text(text, source)
+        if requested_columns and not self._is_select_all(text):
+            return [ColumnExpression("column", column) for column in requested_columns]
         return [ColumnExpression("column", "*")]
 
     def _detect_group_by(
@@ -233,19 +238,77 @@ class RuleBasedParser:
             return ["created_at"]
         return []
 
+    def _extract_predicates(
+        self, text: str, source: str, phrase_matches: tuple[PhraseMatch, ...]
+    ) -> tuple[Predicate, ...]:
+        if self._DATE_BOUND_RE.search(text):
+            return ()
+        predicates: list[Predicate] = []
+
+        between = re.search(
+            r"\b(?P<left>.+?)\s+between\s+(?P<start>\d+(?:\.\d+)?)\s+and\s+"
+            r"(?P<end>\d+(?:\.\d+)?)\b",
+            text,
+        )
+        if between:
+            column = self._resolve_column_in_text(between.group("left"), source)
+            if column is None:
+                column = self._default_metric_column(source)
+            if column is not None:
+                predicates.append(
+                    Predicate(
+                        column,
+                        "BETWEEN",
+                        (
+                            self._coerce_numeric(between.group("start")),
+                            self._coerce_numeric(between.group("end")),
+                        ),
+                    )
+                )
+
+        operator_spans = self._operator_spans(text, phrase_matches)
+        for operator, start, end in operator_spans:
+            value_text = self._value_after_operator(text[end:])
+            if value_text is None:
+                continue
+            column = self._column_before_operator(text[:start], source)
+            if column is None:
+                column = self._predicate_column(text)
+            if column is None:
+                continue
+            value = self._coerce_value_for_column(source, column, value_text)
+            predicates.append(Predicate(column, operator, value))
+
+        unique: dict[tuple[str, str, str], Predicate] = {}
+        for predicate in predicates:
+            unique[(predicate.column, predicate.operator, str(predicate.value))] = predicate
+        return tuple(unique.values())
+
     def _extract_amount_predicate(
         self, text: str, phrase_matches: tuple[PhraseMatch, ...]
     ) -> Predicate | None:
-        if self._DATE_BOUND_RE.search(text):
-            return None
-        between = re.search(r"\bbetween\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\b", text)
-        if between:
-            return Predicate(
-                "amount",
-                "BETWEEN",
-                (float(between.group(1)), float(between.group(2))),
-            )
+        predicates = self._extract_predicates(
+            text, self._resolve_source(text) or "", phrase_matches
+        )
+        return predicates[0] if predicates else None
 
+    def _operator_spans(
+        self, text: str, phrase_matches: tuple[PhraseMatch, ...]
+    ) -> tuple[tuple[str, int, int], ...]:
+        spans: list[tuple[str, int, int]] = []
+        for match in phrase_matches:
+            if match.kind == PhraseKind.OPERATOR:
+                pattern = re.search(rf"\b{re.escape(match.phrase)}\b", text)
+                if pattern:
+                    spans.append((match.value, pattern.start(), pattern.end()))
+        for word, mapped in self._OPERATOR_WORDS.items():
+            for pattern in re.finditer(rf"\b{re.escape(word)}\b", text):
+                spans.append((mapped, pattern.start(), pattern.end()))
+        return tuple(sorted(spans, key=lambda item: item[1]))
+
+    def _legacy_amount_predicate(
+        self, text: str, phrase_matches: tuple[PhraseMatch, ...]
+    ) -> Predicate | None:
         operator = None
         for match in phrase_matches:
             if match.kind == PhraseKind.OPERATOR:
@@ -273,6 +336,43 @@ class RuleBasedParser:
         if column is None:
             return None
         return Predicate(column, operator, value)
+
+    def _value_after_operator(self, text_after_operator: str) -> str | None:
+        cleaned = text_after_operator.strip()
+        cleaned = re.sub(r"^(to|than)\s+", "", cleaned)
+        stop_match = re.search(
+            r"\b(?:from|where|with|and|or|order by|sort by|group by|by|per|limit|top|bottom)\b",
+            cleaned,
+        )
+        if stop_match:
+            cleaned = cleaned[: stop_match.start()].strip()
+        if not cleaned:
+            return None
+        return cleaned
+
+    def _column_before_operator(self, text_before_operator: str, source: str) -> str | None:
+        best_column = None
+        best_position = -1
+        for phrase in _phrases(text_before_operator, max_words=3):
+            column = self._resolve_column_phrase(phrase, source)
+            if column is None:
+                continue
+            position = text_before_operator.rfind(phrase)
+            if position > best_position:
+                best_column = column
+                best_position = position
+        return best_column
+
+    def _coerce_value_for_column(self, source: str, column: str, raw_value: str) -> object:
+        column_meta = self._schema.get_column(source, column)
+        if column_meta is not None and column_meta.type in {"integer", "decimal"}:
+            numeric = re.search(r"\d+(?:\.\d+)?", raw_value)
+            if numeric:
+                return self._coerce_numeric(numeric.group(0))
+        return raw_value.strip()
+
+    def _coerce_numeric(self, value: str) -> int | float:
+        return int(value) if value.isdigit() else float(value)
 
     def _detect_order_by(
         self, text: str, aggregation: AggregationExpression | None, limit: int | None
@@ -391,10 +491,28 @@ class RuleBasedParser:
                 return column
         return None
 
+    def _columns_in_text(self, text: str, source: str) -> tuple[str, ...]:
+        columns: list[str] = []
+        for phrase in _phrases(text, max_words=3):
+            column = self._resolve_column_phrase(phrase, source)
+            if column is not None and column not in columns:
+                columns.append(column)
+        return tuple(columns)
+
     def _resolve_column_phrase(self, phrase: str, source: str) -> str | None:
         for candidate in self._schema.resolve_column(phrase, table=source):
             return candidate.column
         return None
+
+    def _is_select_all(self, text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(show|list|get|find)\s+(all\s+)?"
+                r"((top|bottom|latest|oldest|first)\s+\d+\s+)?"
+                r"(customers|orders|properties|houses|homes|housing)\b",
+                text,
+            )
+        )
 
     def _date_column(self, source: str) -> str:
         for candidate in ("created_at", "sale_date", "date"):
