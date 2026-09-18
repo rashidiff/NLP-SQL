@@ -23,6 +23,20 @@ analytics:
 
 Unsupported or ambiguous requests are rejected instead of guessed.
 
+The project can also run against the real Kaggle Nashville Housing dataset:
+
+```python
+import kagglehub
+
+path = kagglehub.dataset_download("bvanntruong/housing-sql-project")
+print("Path to dataset files:", path)
+```
+
+`NlpSqlEngine.for_housing_dataset()` downloads that dataset, imports
+`Nashville Housing.csv` into a local SQLite database, introspects the SQLite
+schema, and uses that real schema for parsing, validation, SQL compilation, and
+execution.
+
 ## Architecture
 
 ```text
@@ -77,7 +91,8 @@ not scattered through controllers or SQL compilation.
 python -m nlp_sql
 ```
 
-The server listens on `127.0.0.1:8000`.
+The server listens on `127.0.0.1:8000`. By default, the command-line server
+initializes the Kaggle housing dataset at `data/housing.sqlite`.
 
 ## Running Tests
 
@@ -123,6 +138,36 @@ Request:
 
 Response includes `interpretation` and `matched_rules`, but no SQL execution.
 
+### `POST /execute`
+
+Runs a parsed, validated, parameterized read-only query against the configured
+SQLite database.
+
+Request:
+
+```json
+{
+  "query": "show top 5 properties by sale price",
+  "max_rows": 5
+}
+```
+
+Example response fields:
+
+```json
+{
+  "success": true,
+  "sql": "SELECT * FROM housing ORDER BY sale_price DESC LIMIT ?",
+  "parameters": [5],
+  "rows": [
+    {
+      "unique_id": 24392,
+      "sale_price": 50000000
+    }
+  ]
+}
+```
+
 ## Supported Natural Language Queries
 
 Examples covered by tests include:
@@ -140,6 +185,10 @@ Examples covered by tests include:
 - `Count orders per customer`
 - `Show orders after January 1 2026`
 - `Show orders between January 1 2026 and January 31 2026`
+- `show top 5 properties by sale price`
+- `show properties with sale price greater than 500000`
+- `average sale price`
+- `show properties built after 2000`
 
 ## Query AST
 
@@ -159,6 +208,10 @@ Values are stored as data, not SQL fragments.
 
 `SchemaRegistry` loads configured table and column metadata, resolves aliases,
 and provides whitelist checks to validators and parsers.
+
+For real databases, `SchemaRegistry.from_sqlite(...)` introspects SQLite tables
+and columns, then merges deterministic table/column aliases such as
+`properties → housing` and `sale price → sale_price`.
 
 ## Adding Tables
 
@@ -221,14 +274,16 @@ validator remain unchanged.
 - User values are parameterized with `?` placeholders.
 - The compiler only accepts validated AST nodes.
 - The generated SQL is checked for forbidden keywords and semicolons.
+- Database execution is isolated in `SQLiteExecutor`; parsing and compilation
+  remain testable without a database connection.
 
 ## Known Limitations
 
 - This is not a general English parser.
 - Joins are not yet modeled.
 - Grouping by month currently groups by the configured date column directly.
-- The default schema only includes `customers` and `orders`.
-- The API does not execute SQL; execution should be added as a separate layer.
+- The bundled static demo schema only includes `customers` and `orders`.
+- Real execution currently targets SQLite.
 
 ## Roadmap
 

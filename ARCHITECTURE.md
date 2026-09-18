@@ -25,6 +25,28 @@ This separation keeps the system testable and secure:
 - Safety checks run on user input and generated SQL.
 - Future parsers can target the same AST contract.
 
+## Real Database Path
+
+For the Kaggle Nashville Housing dataset, the production path is:
+
+```text
+Kaggle CSV
+→ SQLite Importer
+→ SQLite Schema Introspection
+→ SchemaRegistry
+→ Rule-Based NLP Parser
+→ Query AST
+→ AST Validator
+→ SQL Compiler
+→ SQLiteExecutor
+→ Rows
+```
+
+The database layer is intentionally optional. `NlpSqlEngine.parse()` and
+`NlpSqlEngine.explain()` work without a database connection. `execute()` is the
+only method that requires a configured executor, and it still runs only after
+AST validation and SQL safety validation.
+
 The intended future shape is:
 
 ```text
