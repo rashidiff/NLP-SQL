@@ -78,6 +78,13 @@ class SqlCompiler:
                 parameters.extend([start, end])
                 continue
             if isinstance(predicate.value, str) and predicate.operator in {"=", "!="}:
+                if "address" in predicate.column:
+                    clauses.append(
+                        f"LOWER(REPLACE(REPLACE({predicate.column}, ',', ''), '  ', ' ')) "
+                        f"{predicate.operator} LOWER({self.dialect.placeholder})"
+                    )
+                    parameters.append(predicate.value)
+                    continue
                 clauses.append(
                     f"LOWER({predicate.column}) {predicate.operator} "
                     f"LOWER({self.dialect.placeholder})"

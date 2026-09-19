@@ -199,3 +199,24 @@ def test_housing_engine_keeps_injection_like_value_parameterized(
     assert result.sql.sql == "SELECT * FROM housing WHERE LOWER(land_use) = LOWER(?)"
     assert result.sql.parameters == ("single family'",)
     assert "1=1" not in result.sql.sql
+
+
+def test_housing_engine_resolves_unique_id_from_misspelled_address_query(
+    housing_engine: NlpSqlEngine,
+) -> None:
+    result = housing_engine.execute(
+        "find the unique id of the hous with this adress : 320  11TH AVE S, NASHVILLE",
+        max_rows=20,
+    )
+
+    assert result.success
+    assert result.sql is not None
+    assert result.sql.sql == (
+        "SELECT unique_id FROM housing WHERE "
+        "LOWER(REPLACE(REPLACE(property_address, ',', ''), '  ', ' ')) = LOWER(?)"
+    )
+    assert result.sql.parameters == ("320 11th ave s nashville",)
+    assert result.rows is not None
+    returned_ids = {row["unique_id"] for row in result.rows}
+    assert {25631, 25632, 25633}.issubset(returned_ids)
+    assert 0 not in returned_ids

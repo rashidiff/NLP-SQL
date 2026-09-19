@@ -20,6 +20,7 @@ HOUSING_TABLE_ALIASES = {
     HOUSING_TABLE: (
         "housing",
         "house",
+        "hous",
         "houses",
         "property",
         "properties",
@@ -34,7 +35,7 @@ HOUSING_COLUMN_ALIASES = {
     "unique_id": ("unique id", "id"),
     "parcel_id": ("parcel id", "parcel"),
     "land_use": ("land use", "property type", "type", "category"),
-    "property_address": ("property address", "address"),
+    "property_address": ("property address", "address", "adress"),
     "sale_date": ("sale date", "date", "sold date", "sale time"),
     "sale_price": ("sale price", "price", "selling price", "sold price", "amount"),
     "legal_reference": ("legal reference", "reference"),

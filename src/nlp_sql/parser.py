@@ -211,7 +211,7 @@ class RuleBasedParser:
             return [ColumnExpression("column", "customer_id")]
         if aggregation is not None:
             return []
-        requested_columns = self._columns_in_text(text, source)
+        requested_columns = self._columns_in_text(self._select_clause_text(text), source)
         if requested_columns and not self._is_select_all(text):
             return [ColumnExpression("column", column) for column in requested_columns]
         return [ColumnExpression("column", "*")]
@@ -280,6 +280,8 @@ class RuleBasedParser:
             if value is None:
                 continue
             predicates.append(Predicate(column, operator, value))
+
+        predicates.extend(self._implicit_string_predicates(text, source))
 
         unique: dict[tuple[str, str, str], Predicate] = {}
         for predicate in predicates:
@@ -376,6 +378,42 @@ class RuleBasedParser:
 
     def _coerce_numeric(self, value: str) -> int | float:
         return int(value) if value.isdigit() else float(value)
+
+    def _implicit_string_predicates(self, text: str, source: str) -> list[Predicate]:
+        predicates: list[Predicate] = []
+        table = self._schema.tables.get(source)
+        if table is None:
+            return predicates
+        for column in table.columns.values():
+            if column.type != "string":
+                continue
+            aliases = sorted((column.name, *column.aliases), key=len, reverse=True)
+            for alias in aliases:
+                match = re.search(
+                    rf"\b(?:where|with|for|of)\s+(?:this\s+)?"
+                    rf"{re.escape(alias.replace('_', ' '))}\b\s+(?P<value>.+)$",
+                    text,
+                )
+                if match is None:
+                    continue
+                value = self._clean_implicit_string_value(match.group("value"))
+                if value:
+                    predicates.append(Predicate(column.name, "=", value))
+                    break
+        return predicates
+
+    def _clean_implicit_string_value(self, value: str) -> str:
+        cleaned = value.strip()
+        if re.match(r"^(is|equals|equal to|greater than|less than|at least|at most)\b", cleaned):
+            return ""
+        cleaned = re.sub(r"^(is|equals|equal to|with|of|the)\s+", "", cleaned)
+        stop_match = re.search(
+            r"\b(?:and|or|order by|sort by|group by|limit|top|bottom)\b",
+            cleaned,
+        )
+        if stop_match:
+            cleaned = cleaned[: stop_match.start()].strip()
+        return cleaned
 
     def _detect_order_by(
         self, text: str, aggregation: AggregationExpression | None, limit: int | None
@@ -503,6 +541,15 @@ class RuleBasedParser:
             if column is not None and column not in columns:
                 columns.append(column)
         return tuple(columns)
+
+    def _select_clause_text(self, text: str) -> str:
+        marker = re.search(
+            r"\b(?:where|with|from|after|before|between|sort by|order by|group by)\b",
+            text,
+        )
+        if marker is None:
+            return text
+        return text[: marker.start()]
 
     def _resolve_column_phrase(self, phrase: str, source: str) -> str | None:
         for candidate in self._schema.resolve_column(phrase, table=source):
