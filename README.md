@@ -78,8 +78,8 @@ Important rules:
 ```text
 NLP-SQL/
 ├── ARCHITECTURE.md
-├── NO_AI_POLICY.md
 ├── README.md
+├── SYSTEM_DESIGN.md
 ├── pyproject.toml
 ├── src/
 │   └── nlp_sql/
@@ -113,7 +113,6 @@ NLP-SQL/
     ├── test_date_parser.py
     ├── test_engine_integration.py
     ├── test_housing_engine.py
-    ├── test_no_ai_policy.py
     ├── test_normalizer.py
     ├── test_number_parser.py
     ├── test_package.py
@@ -201,4 +200,3 @@ python -m pytest
 python -m ruff check .
 python -m mypy
 ```
-
