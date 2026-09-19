@@ -1,13 +1,13 @@
 # NLP-SQL
 
-## توضیح پروژه
+## Project Description
 
-این پروژه یک سیستم deterministic و rule-based برای تبدیل پرسش زبان طبیعی انگلیسی
-به SQL امن است. سیستم از LLM، مدل هوش مصنوعی، embedding، vector database یا سرویس
-AI خارجی استفاده نمی‌کند.
+NLP-SQL is a deterministic, rule-based system that converts English natural
+language questions into safe SQL queries. It does not use LLMs, generative AI,
+embeddings, vector databases, or external AI services.
 
-هدف پروژه این است که کاربر بتواند روی دیتابیس واقعی Nashville Housing سؤال‌هایی
-مثل این‌ها بپرسد:
+The project is designed to work with the real Nashville Housing dataset. Users
+can ask questions such as:
 
 ```text
 show top 5 properties by sale price
@@ -16,12 +16,13 @@ average sale price
 show properties where land use is single family
 ```
 
-سیستم query را به AST معنایی تبدیل می‌کند، AST را با schema دیتابیس validate
-می‌کند، SQL پارامتری می‌سازد و بعد روی SQLite اجرا می‌کند.
+The system converts the query into a typed semantic AST, validates that AST
+against the database schema, compiles parameterized SQL, and optionally executes
+the query against SQLite.
 
-## شمای کلی و مدل کار سیستم
+## System Overview
 
-مسیر اصلی سیستم:
+Main runtime flow:
 
 ```text
 Natural Language Query
@@ -47,7 +48,7 @@ SQLite Executor
 Rows
 ```
 
-مدل کار با دیتابیس واقعی:
+Real database setup flow:
 
 ```text
 Kaggle CSV Dataset
@@ -63,15 +64,16 @@ NLP-to-AST
 Validated SQL
 ```
 
-نکته‌های مهم:
+Important rules:
 
-- parser هیچ‌وقت SQL خام از متن کاربر نمی‌سازد.
-- contract اصلی سیستم `QueryAST` است.
-- table، column، operator و aggregation همگی whitelist و validate می‌شوند.
-- valueها مستقیم داخل SQL قرار نمی‌گیرند و به صورت parameter پاس داده می‌شوند.
-- API اختیاری است و فقط wrapper روی همین parser deterministic است؛ مدل AI نیست.
+- The parser never generates raw SQL directly from user text.
+- The central contract is `QueryAST`.
+- Tables, columns, operators, and aggregations are whitelisted and validated.
+- User values are passed as SQL parameters, not interpolated into SQL strings.
+- The HTTP API is optional and is only a wrapper around the deterministic parser.
+  It is not an AI model or AI service.
 
-## Tree کل ریپو
+## Repository Tree
 
 ```text
 NLP-SQL/
@@ -119,53 +121,53 @@ NLP-SQL/
     └── test_tokenizer.py
 ```
 
-## نحوه clone و run
+## Clone And Run
 
-Clone:
+Clone the repository:
 
 ```bash
 git clone https://github.com/rashidiff/NLP-SQL.git
 cd NLP-SQL
 ```
 
-ساخت virtual environment:
+Create a virtual environment:
 
 ```bash
 python -m venv .venv
 ```
 
-فعال‌سازی در Windows PowerShell:
+Activate it on Windows PowerShell:
 
 ```bash
 .venv\Scripts\Activate.ps1
 ```
 
-فعال‌سازی در macOS / Linux:
+Activate it on macOS / Linux:
 
 ```bash
 source .venv/bin/activate
 ```
 
-نصب پروژه:
+Install the project:
 
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-دانلود دیتاست Kaggle و ساخت دیتابیس SQLite:
+Download the Kaggle dataset and build the local SQLite database:
 
 ```bash
 nlp-sql prepare-data
 ```
 
-اجرای query واقعی روی دیتابیس:
+Run a real natural-language query against the database:
 
 ```bash
 nlp-sql query "show top 5 properties by sale price"
 ```
 
-چند نمونه query دیگر:
+More query examples:
 
 ```bash
 nlp-sql query "show properties built after 2000"
@@ -174,25 +176,25 @@ nlp-sql query "average sale price"
 nlp-sql query "show properties where land use is single family"
 ```
 
-دیدن AST و SQL بدون اجرا:
+Show the generated AST and SQL without executing:
 
 ```bash
 nlp-sql parse "show properties with bedrooms at least 4"
 ```
 
-دیدن تفسیر semantic:
+Show the semantic interpretation:
 
 ```bash
 nlp-sql explain "average sale price"
 ```
 
-اجرای API اختیاری:
+Run the optional HTTP API:
 
 ```bash
 nlp-sql serve
 ```
 
-اجرای تست‌ها:
+Run tests and checks:
 
 ```bash
 python -m pytest
