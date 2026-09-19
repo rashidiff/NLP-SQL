@@ -11,6 +11,7 @@ from nlp_sql.datasets import (
     HOUSING_TABLE_ALIASES,
     build_housing_sqlite,
 )
+from nlp_sql.embedding_parser import EmbeddingParser
 from nlp_sql.executor import SQLiteExecutor
 from nlp_sql.parser import RuleBasedParser
 from nlp_sql.result import PipelineResult, QueryError
@@ -28,6 +29,7 @@ class NlpSqlEngine:
     ) -> None:
         self._schema = schema or SchemaRegistry.default()
         self._parser = RuleBasedParser(self._schema, today=today)
+        self._embedding_parser = EmbeddingParser(self._schema, today=today)
         self._validator = ASTValidator(self._schema)
         self._compiler = SqlCompiler()
         self._safety = SafetyValidator()
@@ -47,7 +49,7 @@ class NlpSqlEngine:
         return cls(schema=schema, today=today, executor=SQLiteExecutor(db_path))
 
     def parse(self, query: str) -> PipelineResult:
-        parsed = self._parser.parse(query)
+        parsed = self._parse_with_hybrid_fallback(query)
         if not parsed.success or parsed.ast is None:
             return parsed
         validation_error = self._validator.validate(parsed.ast)
@@ -66,7 +68,7 @@ class NlpSqlEngine:
         )
 
     def explain(self, query: str) -> PipelineResult:
-        parsed = self._parser.parse(query)
+        parsed = self._parse_with_hybrid_fallback(query)
         if not parsed.success or parsed.ast is None:
             return parsed
         validation_error = self._validator.validate(parsed.ast)
@@ -104,3 +106,13 @@ class NlpSqlEngine:
             matched_rules=parsed.matched_rules,
             rows=rows,
         )
+
+    def _parse_with_hybrid_fallback(self, query: str) -> PipelineResult:
+        embedded = self._embedding_parser.parse(query)
+        if embedded.success and embedded.ast is not None:
+            validation_error = self._validator.validate(embedded.ast)
+            if validation_error is None:
+                return embedded
+        if embedded.error is not None and embedded.error.code == "FORBIDDEN_OPERATION":
+            return embedded
+        return self._parser.parse(query)
