@@ -7,6 +7,10 @@ services.
 English business queries are normalized, tokenized, parsed into a typed Query
 AST, validated against a schema registry, and compiled into parameterized SQL.
 
+The CLI is the primary way to use the project. The HTTP API is optional and is
+only a JSON wrapper around the same deterministic parser; it is not an AI API and
+does not call any model.
+
 ## Quick Start
 
 From a fresh clone:
@@ -76,6 +80,9 @@ analytics:
 - Explain mode for deterministic interpretation details.
 
 Unsupported or ambiguous requests are rejected instead of guessed.
+
+The no-AI rule is documented in [NO_AI_POLICY.md](NO_AI_POLICY.md) and enforced
+by tests that scan dependencies and source imports.
 
 The project can also run against the real Kaggle Nashville Housing dataset:
 
