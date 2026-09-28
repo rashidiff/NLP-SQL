@@ -36,6 +36,8 @@ class PipelineResult:
     interpretation: dict[str, Any] | None = None
     matched_rules: tuple[str, ...] = ()
     rows: list[dict[str, Any]] | None = None
+    schema_candidates: tuple[dict[str, Any], ...] = ()
+    adaptive_decision: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"success": self.success}
@@ -53,4 +55,8 @@ class PipelineResult:
             payload["matched_rules"] = list(self.matched_rules)
         if self.rows is not None:
             payload["rows"] = self.rows
+        if self.schema_candidates:
+            payload["schema_candidates"] = list(self.schema_candidates)
+        if self.adaptive_decision is not None:
+            payload["adaptive_decision"] = self.adaptive_decision
         return payload
