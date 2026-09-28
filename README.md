@@ -1,202 +1,196 @@
 # NLP-SQL
 
-## Project Description
+NLP-SQL is a local Python engine that turns a focused set of English
+natural-language questions into validated, parameterized SQL.
 
-NLP-SQL is a deterministic, rule-based system that converts English natural
-language questions into safe SQL queries. It does not use LLMs, generative AI,
-embeddings, vector databases, or external AI services.
+The project is designed around the Nashville Housing dataset, but its pipeline
+is intentionally split into reusable pieces: normalization, parsing, schema
+resolution, AST validation, SQL compilation, safety checks, and optional SQLite
+execution.
 
-The project is designed to work with the real Nashville Housing dataset. Users
-can ask questions such as:
+It is not a generative SQL tool. User text is never interpolated into raw SQL.
+The engine first builds a typed `QueryAST`, validates it against a schema
+registry, compiles parameterized SQL, and then applies an additional SQL safety
+check before execution.
+
+## Features
+
+- Deterministic rule-based parser for supported query patterns.
+- Local TF-IDF fallback for flexible schema and intent matching.
+- Typed semantic AST as the contract between parsing and SQL generation.
+- Schema-aware validation for tables, columns, operators, limits, and
+  aggregations.
+- Parameterized SQL compilation for SQLite.
+- Read-only SQL safety validation.
+- CLI commands for data preparation, parsing, explanation, querying, and API
+  serving.
+- Minimal JSON HTTP API for `/parse`, `/explain`, and `/execute`.
+- Automated test coverage for parsing, validation, SQL compilation, CLI, API,
+  and dataset import behavior.
+
+## Supported Query Examples
 
 ```text
 show top 5 properties by sale price
+show properties built after 2000
 show properties with bedrooms at least 4 and sale price less than 300000
 average sale price
 show properties where land use is single family
+show expensive homes
+homes with many rooms
+recent house sales
 ```
 
-The system converts the query into a typed semantic AST, validates that AST
-against the database schema, compiles parameterized SQL, and optionally executes
-the query against SQLite.
-
-## System Overview
-
-Main runtime flow:
+## How It Works
 
 ```text
-Natural Language Query
-        ↓
-Text Normalizer
-        ↓
-Tokenizer / Phrase Matcher
-        ↓
-Rule-Based Semantic Parser
-        ↓
-Schema Resolver
-        ↓
-Typed Query AST
-        ↓
-AST Validator
-        ↓
-Parameterized SQL Compiler
-        ↓
-SQL Safety Validator
-        ↓
-SQLite Executor
-        ↓
-Rows
+Natural-language query
+  -> text normalization
+  -> rule parser or local TF-IDF fallback
+  -> schema resolution
+  -> typed QueryAST
+  -> AST validation
+  -> parameterized SQL compilation
+  -> SQL safety validation
+  -> optional SQLite execution
 ```
 
-Real database setup flow:
+The rule parser handles explicit supported grammar. The TF-IDF fallback helps
+with looser phrases such as "expensive homes" or "recent house sales" while
+still staying local, schema-bound, and non-generative.
 
-```text
-Kaggle CSV Dataset
-        ↓
-SQLite Importer
-        ↓
-SQLite Schema Introspection
-        ↓
-Schema Registry
-        ↓
-NLP-to-AST
-        ↓
-Validated SQL
-```
-
-Important rules:
-
-- The parser never generates raw SQL directly from user text.
-- The central contract is `QueryAST`.
-- Tables, columns, operators, and aggregations are whitelisted and validated.
-- User values are passed as SQL parameters, not interpolated into SQL strings.
-- The HTTP API is optional and is only a wrapper around the deterministic parser.
-  It is not an AI model or AI service.
-
-## Repository Tree
-
-```text
-NLP-SQL/
-├── ARCHITECTURE.md
-├── README.md
-├── SYSTEM_DESIGN.md
-├── pyproject.toml
-├── src/
-│   └── nlp_sql/
-│       ├── __init__.py
-│       ├── __main__.py
-│       ├── api.py
-│       ├── cli.py
-│       ├── compiler.py
-│       ├── datasets.py
-│       ├── date_parser.py
-│       ├── engine.py
-│       ├── executor.py
-│       ├── normalizer.py
-│       ├── number_parser.py
-│       ├── parser.py
-│       ├── query_ast.py
-│       ├── result.py
-│       ├── safety.py
-│       ├── schema.py
-│       ├── tokenizer.py
-│       ├── validator.py
-│       └── config/
-│           ├── __init__.py
-│           └── default_schema.json
-└── tests/
-    ├── __init__.py
-    ├── test_api.py
-    ├── test_cli.py
-    ├── test_compiler_validator_security.py
-    ├── test_datasets.py
-    ├── test_date_parser.py
-    ├── test_engine_integration.py
-    ├── test_housing_engine.py
-    ├── test_normalizer.py
-    ├── test_number_parser.py
-    ├── test_package.py
-    ├── test_schema.py
-    └── test_tokenizer.py
-```
-
-## Clone And Run
-
-Clone the repository:
+## Installation
 
 ```bash
 git clone https://github.com/rashidiff/NLP-SQL.git
 cd NLP-SQL
-```
-
-Create a virtual environment:
-
-```bash
 python -m venv .venv
 ```
 
-Activate it on Windows PowerShell:
+Activate the environment:
 
 ```bash
+# Windows PowerShell
 .venv\Scripts\Activate.ps1
-```
 
-Activate it on macOS / Linux:
-
-```bash
+# macOS / Linux
 source .venv/bin/activate
 ```
 
-Install the project:
+Install the package with development dependencies:
 
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Download the Kaggle dataset and build the local SQLite database:
+## Prepare The Dataset
+
+Build the local SQLite database from the configured Kaggle housing dataset:
 
 ```bash
 nlp-sql prepare-data
 ```
 
-Run a real natural-language query against the database:
+By default this creates:
 
-```bash
-nlp-sql query "show top 5 properties by sale price"
+```text
+data/housing.sqlite
 ```
 
-More query examples:
+You can choose a different database path:
 
 ```bash
-nlp-sql query "show properties built after 2000"
-nlp-sql query "show properties with bedrooms at least 4 and sale price less than 300000"
-nlp-sql query "average sale price"
-nlp-sql query "show properties where land use is single family"
+nlp-sql prepare-data --db ./tmp/housing.sqlite
 ```
 
-Show the generated AST and SQL without executing:
+## CLI Usage
+
+Parse a question and show the generated AST and SQL:
 
 ```bash
 nlp-sql parse "show properties with bedrooms at least 4"
 ```
 
-Show the semantic interpretation:
+Explain the semantic interpretation without executing SQL:
 
 ```bash
 nlp-sql explain "average sale price"
 ```
 
-Run the optional HTTP API:
+Execute a query against the SQLite database:
+
+```bash
+nlp-sql query "show top 5 properties by sale price"
+```
+
+Limit returned rows:
+
+```bash
+nlp-sql query "show expensive homes" --max-rows 10
+```
+
+## HTTP API
+
+Start the local API server:
 
 ```bash
 nlp-sql serve
 ```
 
-Run tests and checks:
+Example request:
+
+```bash
+curl -X POST http://127.0.0.1:8000/parse \
+  -H "Content-Type: application/json" \
+  -d '{"query":"show top 5 properties by sale price"}'
+```
+
+Available endpoints:
+
+- `POST /parse`
+- `POST /explain`
+- `POST /execute`
+
+## Development
+
+Run the test suite:
 
 ```bash
 python -m pytest
+```
+
+Run linting and type checks:
+
+```bash
 python -m ruff check .
 python -m mypy
 ```
+
+## Project Layout
+
+```text
+src/nlp_sql/
+  api.py              HTTP request handling
+  cli.py              command-line interface
+  compiler.py         QueryAST to parameterized SQL
+  datasets.py         housing dataset import and SQLite setup
+  embedding_parser.py local TF-IDF fallback parser
+  engine.py           public orchestration API
+  parser.py           deterministic rule-based parser
+  query_ast.py        typed semantic query model
+  safety.py           input and SQL safety checks
+  schema.py           schema registry and aliases
+  validator.py        AST validation
+tests/                regression and integration tests
+```
+
+For a deeper design discussion, see `ARCHITECTURE.md` and
+`SYSTEM_DESIGN.md`.
+
+## Current Scope
+
+NLP-SQL is intentionally narrow. It is best suited for read-only analytical
+queries over known schemas. It does not attempt to support arbitrary SQL,
+multi-turn conversational repair, joins across unknown schemas, or writes such
+as `INSERT`, `UPDATE`, and `DELETE`.
