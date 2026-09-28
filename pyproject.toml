@@ -19,6 +19,9 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
 ]
+semantic = [
+  "sentence-transformers>=3",
+]
 
 [project.scripts]
 nlp-sql = "nlp_sql.cli:main"
