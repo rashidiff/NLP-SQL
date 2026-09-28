@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+from nlp_sql.adaptive_interpretation import AdaptiveInterpreter
 from nlp_sql.compiler import SqlCompiler
 from nlp_sql.datasets import (
     HOUSING_COLUMN_ALIASES,
@@ -37,6 +38,7 @@ class NlpSqlEngine:
         self._compiler = SqlCompiler()
         self._safety = SafetyValidator()
         self._executor = executor
+        self._adaptive_interpreter = AdaptiveInterpreter()
         self._schema_retriever = schema_retriever or HybridSchemaRetriever(
             documents_from_schema(self._schema)
         )
@@ -97,6 +99,16 @@ class NlpSqlEngine:
             interpretation=parsed.interpretation,
             matched_rules=parsed.matched_rules,
             schema_candidates=schema_candidates,
+            adaptive_decision=self._adaptive_interpreter.decide(
+                PipelineResult(
+                    success=True,
+                    ast=parsed.ast,
+                    sql=sql,
+                    interpretation=parsed.interpretation,
+                    matched_rules=parsed.matched_rules,
+                    schema_candidates=schema_candidates,
+                )
+            ).to_dict(),
         )
 
     def explain(self, query: str) -> PipelineResult:
@@ -118,6 +130,15 @@ class NlpSqlEngine:
             interpretation=parsed.interpretation,
             matched_rules=parsed.matched_rules,
             schema_candidates=schema_candidates,
+            adaptive_decision=self._adaptive_interpreter.decide(
+                PipelineResult(
+                    success=True,
+                    ast=parsed.ast,
+                    interpretation=parsed.interpretation,
+                    matched_rules=parsed.matched_rules,
+                    schema_candidates=schema_candidates,
+                )
+            ).to_dict(),
         )
 
     def execute(self, query: str, max_rows: int = 100) -> PipelineResult:
