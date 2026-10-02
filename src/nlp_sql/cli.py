@@ -10,6 +10,7 @@ from typing import Any, cast
 from nlp_sql.api import run
 from nlp_sql.datasets import build_housing_sqlite
 from nlp_sql.engine import NlpSqlEngine
+from nlp_sql.schema import SchemaRegistry
 
 DEFAULT_DB_PATH = Path("data/housing.sqlite")
 
@@ -30,13 +31,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.success else 1
 
     if args.command == "parse":
-        engine = NlpSqlEngine.for_housing_dataset(db_path=Path(args.db))
+        engine = _engine_for_args(args)
         result = engine.parse(args.query)
         print(json.dumps(result.to_dict(), indent=2, default=str))
         return 0 if result.success else 1
 
     if args.command == "explain":
-        engine = NlpSqlEngine.for_housing_dataset(db_path=Path(args.db))
+        engine = _engine_for_args(args)
         result = engine.explain(args.query)
         print(json.dumps(result.to_dict(), indent=2, default=str))
         return 0 if result.success else 1
@@ -67,12 +68,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parse = subparsers.add_parser("parse", help="Parse a natural-language query to AST and SQL.")
     parse.add_argument("query")
     _add_db_arg(parse)
+    _add_schema_arg(parse)
 
     explain = subparsers.add_parser(
         "explain", help="Show semantic interpretation without execution."
     )
     explain.add_argument("query")
     _add_db_arg(explain)
+    _add_schema_arg(explain)
 
     serve = subparsers.add_parser("serve", help="Run the JSON HTTP API.")
     serve.add_argument("--host", default="127.0.0.1")
@@ -88,6 +91,19 @@ def _add_db_arg(parser: argparse.ArgumentParser) -> None:
         default=str(DEFAULT_DB_PATH),
         help=f"SQLite database path. Defaults to {DEFAULT_DB_PATH}.",
     )
+
+
+def _add_schema_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--schema",
+        help="Path to a schema JSON file for parse/explain without preparing a database.",
+    )
+
+
+def _engine_for_args(args: argparse.Namespace) -> NlpSqlEngine:
+    if args.schema:
+        return NlpSqlEngine(schema=SchemaRegistry.from_json_file(Path(args.schema)))
+    return NlpSqlEngine.for_housing_dataset(db_path=Path(args.db))
 
 
 def payload_from_stdout(text: str) -> dict[str, Any]:

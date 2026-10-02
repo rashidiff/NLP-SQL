@@ -97,6 +97,12 @@ Parse a query and show generated AST/SQL:
 nlp-sql parse "show properties with bedrooms at least 4"
 ```
 
+Parse against your own schema JSON without preparing a demo database:
+
+```bash
+nlp-sql parse "show all tickets" --schema ./schema.json
+```
+
 Explain without execution:
 
 ```bash

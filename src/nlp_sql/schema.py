@@ -73,6 +73,14 @@ class SchemaRegistry:
         return cls.from_dict(raw_schema)
 
     @classmethod
+    def from_json_file(cls, path: Path) -> SchemaRegistry:
+        with path.open(encoding="utf-8") as file:
+            raw_schema = json.load(file)
+        if not isinstance(raw_schema, dict):
+            raise ValueError("Schema file must contain a JSON object.")
+        return cls.from_dict(raw_schema)
+
+    @classmethod
     def from_sqlite(
         cls,
         db_path: Path,

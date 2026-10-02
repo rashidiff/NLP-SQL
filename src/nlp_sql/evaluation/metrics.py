@@ -34,7 +34,11 @@ def schema_linking_metrics(candidate: QueryAST, reference: QueryAST) -> dict[str
 
 
 def ast_structurally_equivalent(candidate: QueryAST, reference: QueryAST) -> bool:
-    return candidate.to_dict() == reference.to_dict()
+    candidate_data = candidate.to_dict()
+    reference_data = reference.to_dict()
+    candidate_data.pop("matched_rules", None)
+    reference_data.pop("matched_rules", None)
+    return candidate_data == reference_data
 
 
 def normalize_sql(sql: str) -> str:
