@@ -62,6 +62,11 @@ demo includes property records, traffic incidents, and public facilities.
 The current system does not claim arbitrary cross-dataset join planning. The
 metadata model is designed so future planners can reason over multiple sources.
 
+`RegistryQueryEngine` now performs dataset-level routing with ambiguity
+handling. It intentionally routes to one dataset; arbitrary cross-dataset
+execution still requires an explicit federated planner and remains out of the
+current safety contract.
+
 ## Schema Graph
 
 `SchemaGraph` represents datasets, tables, columns, and concepts as nodes.

@@ -17,6 +17,7 @@ The project has evolved into a hybrid semantic query system:
 - SQLite-backed embedding storage with a bounded in-memory LRU cache;
 - ambiguity-aware Text-to-SQL evaluation utilities;
 - multi-dataset registry and lightweight schema graph expansion;
+- registry-aware dataset routing with ambiguity clarification;
 - optional MCP-style facade that wraps the same safe engine.
 
 ## What It Is Not
@@ -103,6 +104,11 @@ When a SQLite housing database is opened, the engine profiles whitelisted
 columns (null ratio, distinct count, min/max, and sample values) and attaches
 that evidence to schema retrieval documents. Execution results can include the
 SQLite query plan under `execution_plan`.
+
+For multiple registered datasets, `RegistryQueryEngine` first selects a
+dataset using registry metadata and routes the query to that dataset's schema,
+retriever, LLM planner, and executor. Close dataset scores result in an
+explicit clarification instead of a silent cross-dataset guess.
 
 ## CLI Usage
 
