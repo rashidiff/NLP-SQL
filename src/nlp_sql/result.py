@@ -40,6 +40,7 @@ class PipelineResult:
     adaptive_decision: dict[str, Any] | None = None
     confidence: float | None = None
     candidate_count: int = 0
+    execution_plan: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"success": self.success}
@@ -65,4 +66,6 @@ class PipelineResult:
             payload["confidence"] = self.confidence
         if self.candidate_count:
             payload["candidate_count"] = self.candidate_count
+        if self.execution_plan is not None:
+            payload["execution_plan"] = self.execution_plan
         return payload

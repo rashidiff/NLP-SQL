@@ -176,6 +176,7 @@ class NlpSqlEngine:
                 candidate_count=parsed.candidate_count,
             )
         try:
+            execution_plan = self._executor.explain(parsed.sql)
             rows = self._executor.execute(parsed.sql, max_rows=max_rows)
         except Exception as exc:
             return PipelineResult(
@@ -199,6 +200,7 @@ class NlpSqlEngine:
             schema_candidates=parsed.schema_candidates,
             confidence=parsed.confidence,
             candidate_count=parsed.candidate_count,
+            execution_plan=execution_plan,
         )
 
     def search_schema(self, query: str, top_k: int = 8) -> tuple[dict[str, object], ...]:
