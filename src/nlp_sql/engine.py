@@ -7,6 +7,7 @@ from pathlib import Path
 
 from nlp_sql.adaptive_interpretation import AdaptiveInterpreter
 from nlp_sql.catalog import profile_sqlite
+from nlp_sql.conversation import ConversationContext
 from nlp_sql.compiler import SqlCompiler
 from nlp_sql.datasets import (
     HOUSING_COLUMN_ALIASES,
@@ -81,9 +82,11 @@ class NlpSqlEngine:
             schema_retriever=retriever,
         )
 
-    def parse(self, query: str) -> PipelineResult:
+    def parse(
+        self, query: str, conversation: ConversationContext | None = None
+    ) -> PipelineResult:
         schema_candidates = self.search_schema(query)
-        parsed = self._parse_with_hybrid_fallback(query)
+        parsed = self._parse_with_hybrid_fallback(query, conversation)
         if not parsed.success or parsed.ast is None:
             return self._attach_schema_candidates(parsed, schema_candidates)
         validation_error = self._validator.validate(parsed.ast)
@@ -124,9 +127,11 @@ class NlpSqlEngine:
             ).to_dict(),
         )
 
-    def explain(self, query: str) -> PipelineResult:
+    def explain(
+        self, query: str, conversation: ConversationContext | None = None
+    ) -> PipelineResult:
         schema_candidates = self.search_schema(query)
-        parsed = self._parse_with_hybrid_fallback(query)
+        parsed = self._parse_with_hybrid_fallback(query, conversation)
         if not parsed.success or parsed.ast is None:
             return self._attach_schema_candidates(parsed, schema_candidates)
         validation_error = self._validator.validate(parsed.ast)
@@ -156,8 +161,13 @@ class NlpSqlEngine:
             ).to_dict(),
         )
 
-    def execute(self, query: str, max_rows: int = 100) -> PipelineResult:
-        parsed = self.parse(query)
+    def execute(
+        self,
+        query: str,
+        max_rows: int = 100,
+        conversation: ConversationContext | None = None,
+    ) -> PipelineResult:
+        parsed = self.parse(query, conversation=conversation)
         if not parsed.success or parsed.sql is None:
             return parsed
         if self._executor is None:
@@ -224,10 +234,14 @@ class NlpSqlEngine:
             return {}
         return dict(stats())
 
-    def _parse_with_hybrid_fallback(self, query: str) -> PipelineResult:
+    def _parse_with_hybrid_fallback(
+        self, query: str, conversation: ConversationContext | None = None
+    ) -> PipelineResult:
         if self._llm_parser is not None:
             schema_context = self.search_schema(query)
-            llm_result = self._llm_parser.parse(query, schema_context=schema_context)
+            llm_result = self._llm_parser.parse(
+                query, schema_context=schema_context, conversation=conversation
+            )
             if llm_result.success and llm_result.ast is not None:
                 validation_error = self._validator.validate(llm_result.ast)
                 if validation_error is None:
@@ -236,6 +250,7 @@ class NlpSqlEngine:
                     query,
                     feedback=f"{validation_error.code}: {validation_error.message}",
                     schema_context=schema_context,
+                    conversation=conversation,
                 )
                 if retry.success and retry.ast is not None:
                     retry_error = self._validator.validate(retry.ast)

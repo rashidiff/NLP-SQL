@@ -27,6 +27,7 @@ from nlp_sql.query_ast import (
     QueryType,
     SortDirection,
 )
+from nlp_sql.conversation import ConversationContext
 from nlp_sql.result import PipelineResult, QueryError
 from nlp_sql.schema import SchemaRegistry
 
@@ -76,9 +77,15 @@ class LLMParser:
         *,
         feedback: str | None = None,
         schema_context: tuple[dict[str, Any], ...] = (),
+        conversation: ConversationContext | None = None,
     ) -> PipelineResult:
         try:
-            payload = self._request(query, feedback=feedback, schema_context=schema_context)
+            payload = self._request(
+                query,
+                feedback=feedback,
+                schema_context=schema_context,
+                conversation=conversation,
+            )
             candidate_count = 0
             candidates = payload.get("candidates")
             if isinstance(candidates, list) and candidates:
@@ -134,6 +141,7 @@ class LLMParser:
         *,
         feedback: str | None = None,
         schema_context: tuple[dict[str, Any], ...] = (),
+        conversation: ConversationContext | None = None,
     ) -> dict[str, Any]:
         body = {
             "model": self._model,
@@ -142,7 +150,9 @@ class LLMParser:
                 {
                     "role": "system",
                     "content": self._system_prompt(
-                        feedback=feedback, schema_context=schema_context
+                        feedback=feedback,
+                        schema_context=schema_context,
+                        conversation=conversation,
                     ),
                 },
                 {"role": "user", "content": query},
@@ -177,6 +187,7 @@ class LLMParser:
         *,
         feedback: str | None = None,
         schema_context: tuple[dict[str, Any], ...] = (),
+        conversation: ConversationContext | None = None,
     ) -> str:
         schema = {
             table.name: {
@@ -193,6 +204,7 @@ class LLMParser:
             "retrieved_schema_candidates": schema_context
         }
         context = json.dumps(schema_context, sort_keys=True) if schema_context else "[]"
+        history = json.dumps(conversation.as_messages() if conversation else (), ensure_ascii=False)
         prompt = (
             "You are a semantic query planner. Convert the user's natural-language "
             "question into JSON matching the QueryAST contract below. Never write SQL. "
@@ -200,6 +212,7 @@ class LLMParser:
             "ambiguous or unsupported, return {\"clarification\": \"one concise question\"}. "
             f"Today is {today}. Schema context: {json.dumps(schema_for_prompt, sort_keys=True)}. "
             f"Relevant retrieved schema context: {context}. "
+            f"Recent conversation context: {history}. Resolve follow-up references using it. "
             "JSON fields: type='select', source, select [{type:'column',name}], "
             "aggregations [{type:'aggregation',function,column,alias}], filters "
             "([{column,operator,value}] or {column,start,end}), having "

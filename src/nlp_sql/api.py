@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from nlp_sql.engine import NlpSqlEngine
+from nlp_sql.conversation import ConversationContext
 
 
 def handle_api_request(
@@ -21,14 +22,19 @@ def handle_api_request(
             "error": {"code": "INVALID_REQUEST", "message": "Field 'query' is required."},
         }
     if path == "/parse":
-        return HTTPStatus.OK, engine.parse(query).to_dict()
+        context = ConversationContext.from_history(payload.get("history"))
+        return HTTPStatus.OK, engine.parse(query, conversation=context).to_dict()
     if path == "/explain":
-        return HTTPStatus.OK, engine.explain(query).to_dict()
+        context = ConversationContext.from_history(payload.get("history"))
+        return HTTPStatus.OK, engine.explain(query, conversation=context).to_dict()
     if path == "/execute":
         max_rows = payload.get("max_rows", 100)
         if not isinstance(max_rows, int):
             max_rows = 100
-        return HTTPStatus.OK, engine.execute(query, max_rows=max_rows).to_dict()
+        context = ConversationContext.from_history(payload.get("history"))
+        return HTTPStatus.OK, engine.execute(
+            query, max_rows=max_rows, conversation=context
+        ).to_dict()
     return HTTPStatus.NOT_FOUND, {
         "success": False,
         "error": {"code": "NOT_FOUND", "message": "Endpoint not found."},
