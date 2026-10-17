@@ -109,7 +109,11 @@ class NlpSqlEngine:
                 success=False,
                 ast=parsed.ast,
                 error=validation_error,
+                interpretation=parsed.interpretation,
+                matched_rules=parsed.matched_rules,
                 schema_candidates=schema_candidates,
+                confidence=parsed.confidence,
+                candidate_count=parsed.candidate_count,
                 trace=parsed.trace,
             )
         sql = self._compiler.compile(parsed.ast)
@@ -119,7 +123,12 @@ class NlpSqlEngine:
                 success=False,
                 ast=parsed.ast,
                 error=safety_error,
+                interpretation=parsed.interpretation,
+                matched_rules=parsed.matched_rules,
                 schema_candidates=schema_candidates,
+                confidence=parsed.confidence,
+                candidate_count=parsed.candidate_count,
+                trace=parsed.trace,
             )
         return PipelineResult(
             success=True,
@@ -163,7 +172,11 @@ class NlpSqlEngine:
                 success=False,
                 ast=parsed.ast,
                 error=validation_error,
+                interpretation=parsed.interpretation,
+                matched_rules=parsed.matched_rules,
                 schema_candidates=schema_candidates,
+                confidence=parsed.confidence,
+                candidate_count=parsed.candidate_count,
                 trace=parsed.trace,
             )
         return PipelineResult(
