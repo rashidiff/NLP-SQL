@@ -118,6 +118,8 @@ class NlpSqlEngine:
                     interpretation=parsed.interpretation,
                     matched_rules=parsed.matched_rules,
                     schema_candidates=schema_candidates,
+                    confidence=parsed.confidence,
+                    candidate_count=parsed.candidate_count,
                 )
             ).to_dict(),
         )
@@ -148,6 +150,8 @@ class NlpSqlEngine:
                     interpretation=parsed.interpretation,
                     matched_rules=parsed.matched_rules,
                     schema_candidates=schema_candidates,
+                    confidence=parsed.confidence,
+                    candidate_count=parsed.candidate_count,
                 )
             ).to_dict(),
         )
@@ -168,6 +172,8 @@ class NlpSqlEngine:
                 interpretation=parsed.interpretation,
                 matched_rules=parsed.matched_rules,
                 schema_candidates=parsed.schema_candidates,
+                confidence=parsed.confidence,
+                candidate_count=parsed.candidate_count,
             )
         try:
             rows = self._executor.execute(parsed.sql, max_rows=max_rows)
@@ -180,6 +186,8 @@ class NlpSqlEngine:
                 interpretation=parsed.interpretation,
                 matched_rules=parsed.matched_rules,
                 schema_candidates=parsed.schema_candidates,
+                confidence=parsed.confidence,
+                candidate_count=parsed.candidate_count,
             )
         return PipelineResult(
             success=True,
@@ -189,6 +197,8 @@ class NlpSqlEngine:
             matched_rules=parsed.matched_rules,
             rows=rows,
             schema_candidates=parsed.schema_candidates,
+            confidence=parsed.confidence,
+            candidate_count=parsed.candidate_count,
         )
 
     def search_schema(self, query: str, top_k: int = 8) -> tuple[dict[str, object], ...]:
@@ -256,4 +266,6 @@ class NlpSqlEngine:
             rows=result.rows,
             schema_candidates=schema_candidates,
             adaptive_decision=result.adaptive_decision,
+            confidence=result.confidence,
+            candidate_count=result.candidate_count,
         )

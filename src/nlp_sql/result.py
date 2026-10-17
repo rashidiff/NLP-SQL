@@ -38,6 +38,8 @@ class PipelineResult:
     rows: list[dict[str, Any]] | None = None
     schema_candidates: tuple[dict[str, Any], ...] = ()
     adaptive_decision: dict[str, Any] | None = None
+    confidence: float | None = None
+    candidate_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"success": self.success}
@@ -59,4 +61,8 @@ class PipelineResult:
             payload["schema_candidates"] = list(self.schema_candidates)
         if self.adaptive_decision is not None:
             payload["adaptive_decision"] = self.adaptive_decision
+        if self.confidence is not None:
+            payload["confidence"] = self.confidence
+        if self.candidate_count:
+            payload["candidate_count"] = self.candidate_count
         return payload

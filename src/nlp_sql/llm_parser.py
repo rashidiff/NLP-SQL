@@ -79,6 +79,32 @@ class LLMParser:
     ) -> PipelineResult:
         try:
             payload = self._request(query, feedback=feedback, schema_context=schema_context)
+            candidate_count = 0
+            candidates = payload.get("candidates")
+            if isinstance(candidates, list) and candidates:
+                valid_candidates = [item for item in candidates if isinstance(item, dict)]
+                if not valid_candidates:
+                    raise ValueError("LLM candidates must be objects.")
+                valid_candidates.sort(key=lambda item: float(item.get("confidence", 0.0)), reverse=True)
+                top_confidence = float(valid_candidates[0].get("confidence", 0.0))
+                if len(valid_candidates) > 1:
+                    second_confidence = float(valid_candidates[1].get("confidence", 0.0))
+                    if top_confidence - second_confidence < 0.08:
+                        return PipelineResult(
+                            success=False,
+                            requires_clarification=True,
+                            error=QueryError(
+                                "AMBIGUOUS_QUERY",
+                                "The query has multiple similarly likely interpretations.",
+                            ),
+                            confidence=max(0.0, min(1.0, top_confidence)),
+                            candidate_count=len(valid_candidates),
+                        )
+                selected = valid_candidates[0].get("plan")
+                if not isinstance(selected, dict):
+                    raise ValueError("Each LLM candidate must contain a plan object.")
+                payload = selected
+                candidate_count = len(valid_candidates)
             if "clarification" in payload:
                 message = str(payload["clarification"]).strip()
                 if message:
@@ -98,6 +124,8 @@ class LLMParser:
             ast=ast,
             interpretation={"source": ast.source, "status": ast.status, "parser": "llm"},
             matched_rules=("parser:llm",),
+            confidence=_confidence(payload.get("confidence", 0.85)),
+            candidate_count=candidate_count,
         )
 
     def _request(
@@ -181,6 +209,8 @@ class LLMParser:
             "joins [{table,left_column,right_column,join_type:'INNER'|'LEFT'}], "
             "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
             "limit integer or null, status='inferred'."
+            " You may instead return candidates:[{confidence,plan},...]. "
+            "Return confidence between 0 and 1."
         )
         if feedback:
             prompt += (
@@ -308,3 +338,10 @@ def _list_of_dicts(value: Any, field: str) -> list[dict[str, Any]]:
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         raise ValueError(f"{field} must be an array of objects")
     return value
+
+
+def _confidence(value: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0

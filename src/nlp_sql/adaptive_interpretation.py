@@ -57,11 +57,13 @@ class AdaptiveInterpreter:
             if result.schema_candidates
             else 0.0
         )
-        parser_confidence = 0.90 if result.success else 0.0
+        parser_confidence = (
+            result.confidence if result.confidence is not None else (0.90 if result.success else 0.0)
+        )
         execution_signal = 0.05 if result.rows else 0.0
         confidence = min(1.0, parser_confidence * 0.7 + retrieval_confidence * 0.25 + execution_signal)
         candidate = InterpretationCandidate(
-            name="deterministic_parser",
+            name=str((result.interpretation or {}).get("parser", "deterministic_parser")),
             ast=result.ast,
             confidence=confidence,
             evidence={
