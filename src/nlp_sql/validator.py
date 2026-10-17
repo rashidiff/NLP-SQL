@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from nlp_sql.query_ast import (
     CteExpression,
     DateRangePredicate,
@@ -28,6 +30,11 @@ class ASTValidator:
         self._max_limit = max_limit
 
     def validate(self, ast: QueryAST) -> QueryError | None:
+        for cte in ast.ctes:
+            if not _valid_identifier(cte.name):
+                return QueryError("INVALID_IDENTIFIER", f"Invalid CTE name '{cte.name}'.")
+            if any(not _valid_identifier(column) for column in cte.columns):
+                return QueryError("INVALID_IDENTIFIER", "CTE columns must be valid identifiers.")
         cte_columns = self._cte_columns(ast)
         if not self._schema.has_table(ast.source) and ast.source not in cte_columns:
             return QueryError("UNKNOWN_TABLE", f"Table '{ast.source}' is not configured.")
@@ -70,6 +77,8 @@ class ASTValidator:
                 for window_order in column.order_by:
                     if window_order.column and not self._has_query_column(ast, window_order.column):
                         return QueryError("UNKNOWN_COLUMN", f"Column '{window_order.column}' is not valid for {ast.source}.")
+                if column.alias is not None and not _valid_identifier(column.alias):
+                    return QueryError("INVALID_IDENTIFIER", f"Invalid window alias '{column.alias}'.")
                 continue
             if column.name != "*" and not self._has_query_column(ast, column.name):
                 return QueryError(
@@ -80,6 +89,8 @@ class ASTValidator:
                 return QueryError(
                     "UNSUPPORTED_AGGREGATION", f"Unsupported aggregation {aggregation.function}."
                 )
+            if aggregation.alias is not None and not _valid_identifier(aggregation.alias):
+                return QueryError("INVALID_IDENTIFIER", f"Invalid aggregation alias '{aggregation.alias}'.")
             if aggregation.column != "*" and not self._has_query_column(ast, aggregation.column):
                 return QueryError(
                     "UNKNOWN_COLUMN",
@@ -198,3 +209,7 @@ class ASTValidator:
         if predicate.operator not in SUPPORTED_OPERATORS:
             return QueryError("UNSUPPORTED_OPERATOR", f"Unsupported operator {predicate.operator}.")
         return None
+
+
+def _valid_identifier(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value))
