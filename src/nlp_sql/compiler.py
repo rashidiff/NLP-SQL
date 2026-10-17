@@ -162,10 +162,12 @@ class SqlCompiler:
             return " AND ".join(clauses) or "1 = 1"
         if predicate.operator == "BETWEEN":
             start, end = predicate.value
+            first = self._placeholder(parameters)
+            second = self._placeholder(parameters, offset=1)
             parameters.extend([start, end])
             return (
-                f"{self._identifier(predicate.column)} BETWEEN {self._placeholder(parameters)} "
-                f"AND {self._placeholder(parameters, offset=1)}"
+                f"{self._identifier(predicate.column)} BETWEEN {first} "
+                f"AND {second}"
             )
         if predicate.operator in {"IS NULL", "IS NOT NULL"}:
             return f"{self._identifier(predicate.column)} {predicate.operator}"
@@ -192,19 +194,22 @@ class SqlCompiler:
             and predicate.operator in {"=", "!="}
             and "address" in predicate.column
         ):
+            placeholder = self._placeholder(parameters)
             parameters.append(predicate.value)
             return (
                 f"LOWER(REPLACE(REPLACE({self._identifier(predicate.column)}, ',', ''), '  ', ' ')) "
-                f"{predicate.operator} LOWER({self._placeholder(parameters)})"
+                f"{predicate.operator} LOWER({placeholder})"
             )
         if predicate.operator in {"=", "!=", "LIKE", "NOT LIKE"} and isinstance(predicate.value, str):
+            placeholder = self._placeholder(parameters)
             parameters.append(predicate.value)
             return (
                 f"LOWER({self._identifier(predicate.column)}) {predicate.operator} "
-                f"LOWER({self._placeholder(parameters)})"
+                f"LOWER({placeholder})"
             )
+        placeholder = self._placeholder(parameters)
         parameters.append(predicate.value)
-        return f"{self._identifier(predicate.column)} {predicate.operator} {self._placeholder(parameters)}"
+        return f"{self._identifier(predicate.column)} {predicate.operator} {placeholder}"
 
     def _compile_having(self, ast: QueryAST, parameters: list[Any]) -> str:
         clauses: list[str] = []
