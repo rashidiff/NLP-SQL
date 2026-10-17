@@ -137,9 +137,11 @@ def documents_from_schema(
     dataset_title: str | None = None,
     dataset_description: str | None = None,
     representative_values: dict[str, tuple[str, ...]] | None = None,
+    column_metadata: dict[str, dict[str, str]] | None = None,
 ) -> tuple[SchemaDocument, ...]:
     documents: list[SchemaDocument] = []
     table_values = representative_values or {}
+    metadata_by_column = column_metadata or {}
     if dataset_title or dataset_description:
         documents.append(
             SchemaDocument(
@@ -175,6 +177,7 @@ def documents_from_schema(
                 metadata["references"] = ",".join(
                     f"{item.referenced_table}.{item.referenced_column}" for item in foreign_keys
                 )
+            metadata.update(metadata_by_column.get(key, {}))
             documents.append(
                 SchemaDocument(
                     dataset_id=dataset_id,

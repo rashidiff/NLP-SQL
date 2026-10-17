@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from nlp_sql.adaptive_interpretation import AdaptiveInterpreter
+from nlp_sql.catalog import profile_sqlite
 from nlp_sql.compiler import SqlCompiler
 from nlp_sql.datasets import (
     HOUSING_COLUMN_ALIASES,
@@ -57,12 +58,19 @@ class NlpSqlEngine:
             table_aliases=HOUSING_TABLE_ALIASES,
             column_aliases=HOUSING_COLUMN_ALIASES,
         )
+        profiles = profile_sqlite(db_path, schema)
+        column_metadata = {key: profile.metadata() for key, profile in profiles.items()}
+        representative_values = {
+            key: profile.sample_values for key, profile in profiles.items()
+        }
         retriever = HybridSchemaRetriever.with_sqlite_store(
             documents_from_schema(
                 schema,
                 dataset_id="housing",
                 dataset_title="Nashville Housing",
                 dataset_description="Property sales and assessment records for Nashville housing.",
+                representative_values=representative_values,
+                column_metadata=column_metadata,
             ),
             db_path.with_suffix(".embeddings.sqlite"),
         )
