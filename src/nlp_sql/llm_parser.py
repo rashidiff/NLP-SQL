@@ -70,9 +70,15 @@ class LLMParser:
             temperature=float(os.getenv("NLP_SQL_LLM_TEMPERATURE", "0.2")),
         )
 
-    def parse(self, query: str, *, feedback: str | None = None) -> PipelineResult:
+    def parse(
+        self,
+        query: str,
+        *,
+        feedback: str | None = None,
+        schema_context: tuple[dict[str, Any], ...] = (),
+    ) -> PipelineResult:
         try:
-            payload = self._request(query, feedback=feedback)
+            payload = self._request(query, feedback=feedback, schema_context=schema_context)
             if "clarification" in payload:
                 message = str(payload["clarification"]).strip()
                 if message:
@@ -94,12 +100,23 @@ class LLMParser:
             matched_rules=("parser:llm",),
         )
 
-    def _request(self, query: str, *, feedback: str | None = None) -> dict[str, Any]:
+    def _request(
+        self,
+        query: str,
+        *,
+        feedback: str | None = None,
+        schema_context: tuple[dict[str, Any], ...] = (),
+    ) -> dict[str, Any]:
         body = {
             "model": self._model,
             "temperature": self._temperature,
             "messages": [
-                {"role": "system", "content": self._system_prompt(feedback=feedback)},
+                {
+                    "role": "system",
+                    "content": self._system_prompt(
+                        feedback=feedback, schema_context=schema_context
+                    ),
+                },
                 {"role": "user", "content": query},
             ],
             "response_format": {"type": "json_object"},
@@ -127,7 +144,12 @@ class LLMParser:
             raise ValueError("LLM response did not contain message content.")
         return self._decode_json(content)
 
-    def _system_prompt(self, *, feedback: str | None = None) -> str:
+    def _system_prompt(
+        self,
+        *,
+        feedback: str | None = None,
+        schema_context: tuple[dict[str, Any], ...] = (),
+    ) -> str:
         schema = {
             table.name: {
                 "aliases": list(table.aliases),
@@ -139,12 +161,17 @@ class LLMParser:
             for table in self._schema.tables.values()
         }
         today = self._today.isoformat() if self._today else "unknown"
+        schema_for_prompt: object = schema if not schema_context else {
+            "retrieved_schema_candidates": schema_context
+        }
+        context = json.dumps(schema_context, sort_keys=True) if schema_context else "[]"
         prompt = (
             "You are a semantic query planner. Convert the user's natural-language "
             "question into JSON matching the QueryAST contract below. Never write SQL. "
             "Use only tables and columns from the supplied schema. If the question is "
             "ambiguous or unsupported, return {\"clarification\": \"one concise question\"}. "
-            f"Today is {today}. Schema: {json.dumps(schema, sort_keys=True)}. "
+            f"Today is {today}. Schema context: {json.dumps(schema_for_prompt, sort_keys=True)}. "
+            f"Relevant retrieved schema context: {context}. "
             "JSON fields: type='select', source, select [{type:'column',name}], "
             "aggregations [{type:'aggregation',function,column,alias}], filters "
             "([{column,operator,value}] or {column,start,end}), having "

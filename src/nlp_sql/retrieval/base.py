@@ -103,6 +103,11 @@ class RetrievalCandidate:
             "column": self.document.column,
             "physical_name": self.document.physical_name,
             "human_name": self.document.human_name,
+            "aliases": list(self.document.aliases),
+            "data_type": self.document.data_type,
+            "description": self.document.description,
+            "representative_values": list(self.document.representative_values),
+            "metadata": dict(self.document.metadata),
             "score": self.score.to_dict(),
             "evidence": list(self.evidence),
         }

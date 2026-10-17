@@ -214,7 +214,8 @@ class NlpSqlEngine:
 
     def _parse_with_hybrid_fallback(self, query: str) -> PipelineResult:
         if self._llm_parser is not None:
-            llm_result = self._llm_parser.parse(query)
+            schema_context = self.search_schema(query)
+            llm_result = self._llm_parser.parse(query, schema_context=schema_context)
             if llm_result.success and llm_result.ast is not None:
                 validation_error = self._validator.validate(llm_result.ast)
                 if validation_error is None:
@@ -222,6 +223,7 @@ class NlpSqlEngine:
                 retry = self._llm_parser.parse(
                     query,
                     feedback=f"{validation_error.code}: {validation_error.message}",
+                    schema_context=schema_context,
                 )
                 if retry.success and retry.ast is not None:
                     retry_error = self._validator.validate(retry.ast)
