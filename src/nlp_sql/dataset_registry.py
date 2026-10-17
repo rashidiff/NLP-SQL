@@ -145,9 +145,9 @@ class RegistryQueryEngine:
         if len(candidates) > 1:
             top = float(candidates[0]["score"])
             second = float(candidates[1]["score"])
-            if top < 0.35 or top - second < 0.15:
+            if top < 0.25 or top - second < 0.15:
                 return None
-        elif float(candidates[0]["score"]) < 0.35:
+        elif float(candidates[0]["score"]) < 0.25:
             return None
         return self._registry.get(str(candidates[0]["dataset_id"]))
 
