@@ -195,6 +195,8 @@ graph = SchemaGraph.from_registry(registry)
 - Benchmark cases can compare ordered or unordered execution results with a
   configurable floating-point tolerance.
 - SQLite execution is read-only and guarded by a row limit and timeout.
+- Workload benchmarks can optionally execute each query and report LLM,
+  repair, clarification, and database-failure telemetry.
 - MCP-style tools call the same engine methods and cannot bypass validation.
 
 ## Development

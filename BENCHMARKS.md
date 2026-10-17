@@ -28,6 +28,14 @@ reports = (
 runner.write_reports(reports, Path("reports"))
 ```
 
+By default the runner measures parsing/planning only. To include guarded SQLite
+execution, row-limit handling, and execution-guided repair in the measurements:
+
+```python
+execution_runner = BenchmarkRunner(engine, execute_queries=True)
+report = execution_runner.run("uniform-execution", uniform)
+```
+
 Reported fields:
 
 - query count
@@ -35,6 +43,8 @@ Reported fields:
 - p95 latency
 - success rate
 - retrieval telemetry snapshot
+- LLM, repair, clarification, and execution-failure counts
+- executed query count (when execution mode is enabled)
 
 ## Ablation Runner
 
@@ -47,7 +57,12 @@ workload = WorkloadGenerator(seed=17).uniform(50)
 results = run_ablation_suite(engine, workload)
 ```
 
-Current ablation labels:
+The helper currently provides named comparison reports over the same configured
+engine. The labels are report names, not runtime feature switches; a true
+component ablation should construct separate engines with the desired planner
+and retriever configuration.
+
+Current report labels:
 
 - deterministic rules only
 - rules plus hybrid retrieval evidence
