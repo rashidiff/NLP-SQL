@@ -178,11 +178,27 @@ class LLMParser:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                raw = json.loads(response.read().decode("utf-8"))
+            raw = self._send_request(request)
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:500]
-            raise ValueError(f"LLM HTTP {exc.code}: {detail}") from exc
+            if exc.code != 400:
+                detail = exc.read().decode("utf-8", errors="replace")[:500]
+                raise ValueError(f"LLM HTTP {exc.code}: {detail}") from exc
+            fallback_body = dict(body)
+            fallback_body.pop("response_format", None)
+            fallback_request = urllib.request.Request(
+                f"{self._base_url}/chat/completions",
+                data=json.dumps(fallback_body).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                raw = self._send_request(fallback_request)
+            except urllib.error.HTTPError as retry_exc:
+                detail = retry_exc.read().decode("utf-8", errors="replace")[:500]
+                raise ValueError(f"LLM HTTP {retry_exc.code}: {detail}") from retry_exc
         choices = raw.get("choices")
         if not isinstance(choices, list) or not choices:
             raise ValueError("LLM response did not contain choices.")
@@ -190,6 +206,13 @@ class LLMParser:
         if not isinstance(content, str):
             raise ValueError("LLM response did not contain message content.")
         return self._decode_json(content)
+
+    def _send_request(self, request: urllib.request.Request) -> dict[str, Any]:
+        with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
     def _system_prompt(
         self,
