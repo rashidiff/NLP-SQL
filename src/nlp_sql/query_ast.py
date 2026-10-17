@@ -61,6 +61,13 @@ class SubqueryExpression:
 
 
 @dataclass(frozen=True)
+class CteExpression:
+    name: str
+    query: "QueryAST"
+    columns: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class HavingPredicate:
     left: AggregationExpression
     operator: str
@@ -96,6 +103,7 @@ class WindowExpression:
 class QueryAST:
     type: QueryType
     source: str
+    ctes: tuple[CteExpression, ...] = ()
     joins: tuple[JoinExpression, ...] = ()
     distinct: bool = False
     select: tuple[ColumnExpression | WindowExpression, ...] = ()

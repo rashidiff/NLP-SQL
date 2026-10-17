@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from nlp_sql.query_ast import (
+    CteExpression,
     DateRangePredicate,
     FilterExpression,
     Predicate,
@@ -27,8 +28,13 @@ class ASTValidator:
         self._max_limit = max_limit
 
     def validate(self, ast: QueryAST) -> QueryError | None:
-        if not self._schema.has_table(ast.source):
+        cte_columns = self._cte_columns(ast)
+        if not self._schema.has_table(ast.source) and ast.source not in cte_columns:
             return QueryError("UNKNOWN_TABLE", f"Table '{ast.source}' is not configured.")
+        for cte in ast.ctes:
+            error = self.validate(cte.query)
+            if error is not None:
+                return error
         for join in ast.joins:
             if join.join_type not in {"INNER", "LEFT", "RIGHT", "FULL"}:
                 return QueryError("UNSUPPORTED_JOIN", f"Unsupported join type {join.join_type}.")
@@ -122,8 +128,31 @@ class ASTValidator:
         if "." in reference:
             table, column = reference.split(".", 1)
             allowed_tables = {ast.source, *(join.table for join in ast.joins)}
-            return table in allowed_tables and self._schema.has_column(table, column)
+            return table in allowed_tables and self._has_column(ast, table, column)
+        if ast.source in self._cte_columns(ast):
+            return reference in self._cte_columns(ast)[ast.source]
         return self._schema.has_column(ast.source, reference)
+
+    def _has_column(self, ast: QueryAST, table: str, column: str) -> bool:
+        if table in self._cte_columns(ast):
+            return column in self._cte_columns(ast)[table]
+        return self._schema.has_column(table, column)
+
+    def _cte_columns(self, ast: QueryAST) -> dict[str, set[str]]:
+        result: dict[str, set[str]] = {}
+        for cte in ast.ctes:
+            columns = set(cte.columns)
+            if not columns:
+                columns = {
+                    item.name for item in cte.query.select if hasattr(item, "name")
+                }
+                columns.update(
+                    item.alias
+                    for item in cte.query.select
+                    if getattr(item, "alias", None)
+                )
+            result[cte.name] = columns
+        return result
 
     def _validate_filter_expression(
         self, ast: QueryAST, expression: FilterExpression

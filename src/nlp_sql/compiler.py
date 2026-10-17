@@ -8,6 +8,7 @@ from typing import Any
 
 from nlp_sql.query_ast import (
     DateRangePredicate,
+    CteExpression,
     FilterExpression,
     Predicate,
     QueryAST,
@@ -46,6 +47,11 @@ class SqlCompiler:
         return SqlQuery(sql, tuple(parameters))
 
     def _compile_statement(self, ast: QueryAST, parameters: list[Any]) -> str:
+        cte_sqls: list[str] = []
+        for cte in ast.ctes:
+            cte_sql = self._compile_statement(cte.query, parameters)
+            column_list = f" ({', '.join(cte.columns)})" if cte.columns else ""
+            cte_sqls.append(f"{cte.name}{column_list} AS ({cte_sql})")
         sql = [
             "SELECT",
             "DISTINCT" if ast.distinct else "",
@@ -77,7 +83,10 @@ class SqlCompiler:
         if ast.limit is not None:
             sql.extend(["LIMIT", self._placeholder(parameters)])
             parameters.append(ast.limit)
-        return " ".join(part for part in sql if part)
+        statement = " ".join(part for part in sql if part)
+        if cte_sqls:
+            statement = "WITH " + ", ".join(cte_sqls) + " " + statement
+        return statement
 
     def _compile_select(self, ast: QueryAST) -> str:
         parts: list[str] = []

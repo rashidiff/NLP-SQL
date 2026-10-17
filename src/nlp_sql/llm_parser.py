@@ -17,6 +17,7 @@ from typing import Any
 from nlp_sql.query_ast import (
     AggregationExpression,
     ColumnExpression,
+    CteExpression,
     DateRangePredicate,
     FilterExpression,
     HavingPredicate,
@@ -238,6 +239,7 @@ class LLMParser:
             "([{column,operator,value}] or {column,start,end}; a subquery value is "
             "{subquery:{...same plan...}}), having "
             "select items may also be window expressions {type:'window',function,column,partition_by,order_by,alias}, "
+            "ctes [{name,columns,query:{...same plan...}}], "
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
             "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
             "predicate:{column,operator,value}, children:[...]}, "
@@ -266,6 +268,14 @@ class LLMParser:
 
     def _ast_from_payload(self, payload: dict[str, Any]) -> QueryAST:
         source = _required_string(payload, "source")
+        ctes = tuple(
+            CteExpression(
+                name=_required_string(item, "name"),
+                query=self._ast_from_payload(_required_dict(item, "query")),
+                columns=tuple(str(value) for value in item.get("columns", [])),
+            )
+            for item in _list_of_dicts(payload.get("ctes", []), "ctes")
+        )
         select = tuple(
             self._select_expression(item)
             for item in _list_of_dicts(payload.get("select", []), "select")
@@ -315,6 +325,7 @@ class LLMParser:
         return QueryAST(
             type=QueryType.SELECT,
             source=source,
+            ctes=ctes,
             joins=joins,
             distinct=bool(payload.get("distinct", False)),
             select=select or (ColumnExpression("column", "*"),),
