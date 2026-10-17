@@ -16,14 +16,22 @@ class SqlDialect:
     def quote_identifier(self, identifier: str) -> str:
         return identifier
 
+    def placeholder_for(self, parameter_index: int) -> str:
+        return self.placeholder
+
 
 class PostgresDialect(SqlDialect):
-    """PostgreSQL-compatible compiler settings using DB-API style placeholders."""
+    """PostgreSQL compiler settings with numbered placeholders."""
+
+    placeholder = "$1"
+
+    def placeholder_for(self, parameter_index: int) -> str:
+        return f"${parameter_index}"
 
 
 @dataclass(frozen=True)
 class SqlCompiler:
-    dialect: SqlDialect = PostgresDialect()
+    dialect: SqlDialect = SqlDialect()
 
     def compile(self, ast: QueryAST) -> SqlQuery:
         parameters: list[Any] = []
@@ -56,7 +64,7 @@ class SqlCompiler:
         if ast.order_by:
             sql.extend(["ORDER BY", self._compile_order_by(ast)])
         if ast.limit is not None:
-            sql.extend(["LIMIT", self.dialect.placeholder])
+            sql.extend(["LIMIT", self._placeholder(parameters)])
             parameters.append(ast.limit)
         return SqlQuery(" ".join(part for part in sql if part), tuple(parameters))
 
@@ -98,18 +106,18 @@ class SqlCompiler:
         if isinstance(predicate, DateRangePredicate):
             clauses: list[str] = []
             if predicate.start != date.min:
-                clauses.append(f"{predicate.column} >= {self.dialect.placeholder}")
+                clauses.append(f"{predicate.column} >= {self._placeholder(parameters)}")
                 parameters.append(predicate.start.isoformat())
             if predicate.end != date.max:
-                clauses.append(f"{predicate.column} < {self.dialect.placeholder}")
+                clauses.append(f"{predicate.column} < {self._placeholder(parameters)}")
                 parameters.append(predicate.end.isoformat())
             return " AND ".join(clauses) or "1 = 1"
         if predicate.operator == "BETWEEN":
             start, end = predicate.value
             parameters.extend([start, end])
             return (
-                f"{predicate.column} BETWEEN {self.dialect.placeholder} "
-                f"AND {self.dialect.placeholder}"
+                f"{predicate.column} BETWEEN {self._placeholder(parameters)} "
+                f"AND {self._placeholder(parameters, offset=1)}"
             )
         if predicate.operator in {"IS NULL", "IS NOT NULL"}:
             return f"{predicate.column} {predicate.operator}"
@@ -117,8 +125,10 @@ class SqlCompiler:
             values = predicate.value if isinstance(predicate.value, (list, tuple)) else ()
             if not values:
                 raise ValueError("IN requires at least one value")
+            placeholders = ", ".join(
+                self._placeholder(parameters, offset=index) for index in range(len(values))
+            )
             parameters.extend(values)
-            placeholders = ", ".join(self.dialect.placeholder for _ in values)
             return f"{predicate.column} IN ({placeholders})"
         if (
             isinstance(predicate.value, str)
@@ -128,25 +138,28 @@ class SqlCompiler:
             parameters.append(predicate.value)
             return (
                 f"LOWER(REPLACE(REPLACE({predicate.column}, ',', ''), '  ', ' ')) "
-                f"{predicate.operator} LOWER({self.dialect.placeholder})"
+                f"{predicate.operator} LOWER({self._placeholder(parameters)})"
             )
         if predicate.operator in {"=", "!=", "LIKE", "NOT LIKE"} and isinstance(predicate.value, str):
             parameters.append(predicate.value)
             return (
                 f"LOWER({predicate.column}) {predicate.operator} "
-                f"LOWER({self.dialect.placeholder})"
+                f"LOWER({self._placeholder(parameters)})"
             )
         parameters.append(predicate.value)
-        return f"{predicate.column} {predicate.operator} {self.dialect.placeholder}"
+        return f"{predicate.column} {predicate.operator} {self._placeholder(parameters)}"
 
     def _compile_having(self, ast: QueryAST, parameters: list[Any]) -> str:
         clauses: list[str] = []
         for predicate in ast.having:
             distinct = "DISTINCT " if predicate.left.distinct else ""
             left = f"{predicate.left.function}({distinct}{predicate.left.column})"
-            clauses.append(f"{left} {predicate.operator} {self.dialect.placeholder}")
+            clauses.append(f"{left} {predicate.operator} {self._placeholder(parameters)}")
             parameters.append(predicate.value)
         return " AND ".join(clauses)
+
+    def _placeholder(self, parameters: list[Any], *, offset: int = 0) -> str:
+        return self.dialect.placeholder_for(len(parameters) + offset + 1)
 
     def _compile_order_by(self, ast: QueryAST) -> str:
         parts: list[str] = []
