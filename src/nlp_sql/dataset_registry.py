@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -53,20 +55,27 @@ class DatasetRegistry:
 
     def search_datasets(self, query: str, top_k: int = 3) -> tuple[dict[str, object], ...]:
         candidates: list[dict[str, object]] = []
-        text = query.lower()
+        query_tokens = _tokens(query)
+        query_text = " ".join(query_tokens)
         for dataset in self._datasets.values():
+            fields = (
+                dataset.id,
+                dataset.title,
+                dataset.description,
+                dataset.source,
+                *dataset.semantic_metadata.values(),
+            )
             haystack = " ".join(
                 (
-                    dataset.id,
-                    dataset.title,
-                    dataset.description,
-                    dataset.source,
-                    *dataset.semantic_metadata.values(),
+                    _normalize(field)
+                    for field in fields
                 )
-            ).lower()
-            score = sum(1 for token in text.split() if token in haystack) / max(
-                len(text.split()), 1
             )
+            haystack_tokens = set(_tokens(haystack))
+            matched_tokens = sorted(set(query_tokens) & haystack_tokens)
+            token_score = len(matched_tokens) / max(len(set(query_tokens)), 1)
+            phrase_score = 0.25 if query_text and query_text in haystack else 0.0
+            score = min(1.0, token_score + phrase_score)
             if score > 0:
                 candidates.append(
                     {
@@ -74,9 +83,13 @@ class DatasetRegistry:
                         "title": dataset.title,
                         "description": dataset.description,
                         "score": score,
+                        "matched_terms": tuple(matched_tokens),
                     }
                 )
-        candidates.sort(key=lambda item: float(item["score"]), reverse=True)
+        candidates.sort(
+            key=lambda item: (float(item["score"]), len(item["matched_terms"])),
+            reverse=True,
+        )
         return tuple(candidates[:top_k])
 
 
@@ -132,8 +145,10 @@ class RegistryQueryEngine:
         if len(candidates) > 1:
             top = float(candidates[0]["score"])
             second = float(candidates[1]["score"])
-            if top - second < 0.15:
+            if top < 0.35 or top - second < 0.15:
                 return None
+        elif float(candidates[0]["score"]) < 0.35:
+            return None
         return self._registry.get(str(candidates[0]["dataset_id"]))
 
     def _ambiguity_result(self, query: str) -> PipelineResult:
@@ -145,6 +160,22 @@ class RegistryQueryEngine:
                 f"Could not confidently choose a dataset for: {query}",
             ),
         )
+
+
+def _normalize(value: str) -> str:
+    """Normalize Unicode text before matching multilingual dataset metadata."""
+
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return normalized.replace("ي", "ی").replace("ك", "ک")
+
+
+def _tokens(value: str) -> tuple[str, ...]:
+    normalized = _normalize(value)
+    return tuple(
+        token
+        for token in re.findall(r"[\w]+", normalized, flags=re.UNICODE)
+        if len(token) > 1
+    )
 
 
 def build_smart_city_demo_registry(root: Path) -> DatasetRegistry:
