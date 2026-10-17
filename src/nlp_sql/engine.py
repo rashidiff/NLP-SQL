@@ -8,7 +8,7 @@ from pathlib import Path
 from nlp_sql.adaptive_interpretation import AdaptiveInterpreter
 from nlp_sql.catalog import profile_sqlite
 from nlp_sql.conversation import ConversationContext
-from nlp_sql.compiler import SqlCompiler
+from nlp_sql.compiler import SqlCompiler, SqlDialect
 from nlp_sql.datasets import (
     HOUSING_COLUMN_ALIASES,
     HOUSING_TABLE_ALIASES,
@@ -34,12 +34,13 @@ class NlpSqlEngine:
         executor: SQLiteExecutor | None = None,
         schema_retriever: SemanticSchemaRetriever | None = None,
         llm_parser: LLMParser | None = None,
+        dialect: SqlDialect | None = None,
     ) -> None:
         self._schema = schema or SchemaRegistry.default()
         self._parser = RuleBasedParser(self._schema, today=today)
         self._embedding_parser = EmbeddingParser(self._schema, today=today)
         self._validator = ASTValidator(self._schema)
-        self._compiler = SqlCompiler()
+        self._compiler = SqlCompiler(dialect=dialect or SqlDialect())
         self._safety = SafetyValidator()
         self._executor = executor
         self._llm_parser = llm_parser or LLMParser.from_environment(self._schema, today=today)
@@ -50,7 +51,10 @@ class NlpSqlEngine:
 
     @classmethod
     def for_housing_dataset(
-        cls, db_path: Path = Path("data/housing.sqlite"), today: date | None = None
+        cls,
+        db_path: Path = Path("data/housing.sqlite"),
+        today: date | None = None,
+        dialect: SqlDialect | None = None,
     ) -> NlpSqlEngine:
         if not db_path.exists():
             build_housing_sqlite(db_path)
@@ -80,6 +84,7 @@ class NlpSqlEngine:
             today=today,
             executor=SQLiteExecutor(db_path),
             schema_retriever=retriever,
+            dialect=dialect,
         )
 
     def parse(
