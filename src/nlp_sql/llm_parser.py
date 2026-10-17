@@ -18,6 +18,7 @@ from nlp_sql.query_ast import (
     AggregationExpression,
     ColumnExpression,
     DateRangePredicate,
+    FilterExpression,
     HavingPredicate,
     JoinExpression,
     OrderBy,
@@ -148,6 +149,8 @@ class LLMParser:
             "aggregations [{type:'aggregation',function,column,alias}], filters "
             "([{column,operator,value}] or {column,start,end}), having "
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
+            "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
+            "predicate:{column,operator,value}, children:[...]}, "
             "joins [{table,left_column,right_column,join_type:'INNER'|'LEFT'}], "
             "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
             "limit integer or null, status='inferred'."
@@ -178,6 +181,8 @@ class LLMParser:
             self._aggregation(item) for item in _list_of_dicts(payload.get("aggregations", []), "aggregations")
         )
         filters = tuple(self._predicate(item) for item in _list_of_dicts(payload.get("filters", []), "filters"))
+        where_payload = payload.get("where")
+        where = self._filter_expression(where_payload) if isinstance(where_payload, dict) else None
         having = tuple(
             HavingPredicate(
                 left=self._aggregation(_required_dict(item, "left")),
@@ -220,6 +225,7 @@ class LLMParser:
             select=select or (ColumnExpression("column", "*"),),
             aggregations=aggregations,
             filters=filters + date_filters,
+            where=where,
             having=having,
             group_by=tuple(str(value) for value in payload.get("group_by", [])),
             order_by=order_by,
@@ -242,6 +248,19 @@ class LLMParser:
             operator=_required_string(item, "operator").upper(),
             value=item.get("value"),
         )
+
+    def _filter_expression(self, item: dict[str, Any]) -> FilterExpression:
+        kind = _required_string(item, "kind").lower()
+        if kind == "predicate":
+            return FilterExpression(
+                kind,
+                predicate=self._predicate(_required_dict(item, "predicate")),
+            )
+        children = tuple(
+            self._filter_expression(child)
+            for child in _list_of_dicts(item.get("children", []), "children")
+        )
+        return FilterExpression(kind, children=children)
 
 
 def _required_string(payload: dict[str, Any], key: str) -> str:

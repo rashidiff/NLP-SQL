@@ -46,6 +46,15 @@ class DateRangePredicate:
 
 
 @dataclass(frozen=True)
+class FilterExpression:
+    """Recursive boolean predicate tree used by advanced planners."""
+
+    kind: str
+    predicate: Predicate | DateRangePredicate | None = None
+    children: tuple["FilterExpression", ...] = ()
+
+
+@dataclass(frozen=True)
 class HavingPredicate:
     left: AggregationExpression
     operator: str
@@ -75,6 +84,7 @@ class QueryAST:
     select: tuple[ColumnExpression, ...] = ()
     aggregations: tuple[AggregationExpression, ...] = ()
     filters: tuple[Predicate | DateRangePredicate, ...] = ()
+    where: FilterExpression | None = None
     having: tuple[HavingPredicate, ...] = ()
     group_by: tuple[str, ...] = ()
     order_by: tuple[OrderBy, ...] = ()

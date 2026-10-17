@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from nlp_sql.query_ast import DateRangePredicate, QueryAST
+from nlp_sql.query_ast import DateRangePredicate, FilterExpression, Predicate, QueryAST
 from nlp_sql.result import SqlQuery
 
 
@@ -70,6 +70,8 @@ class SqlCompiler:
         return ", ".join(parts) if parts else "*"
 
     def _compile_where(self, ast: QueryAST, parameters: list[Any]) -> str:
+        if ast.where is not None:
+            return self._compile_filter_expression(ast.where, parameters)
         clauses: list[str] = []
         for predicate in ast.filters:
             if isinstance(predicate, DateRangePredicate):
@@ -105,6 +107,56 @@ class SqlCompiler:
             clauses.append(f"{predicate.column} {predicate.operator} {self.dialect.placeholder}")
             parameters.append(predicate.value)
         return " AND ".join(clauses)
+
+    def _compile_filter_expression(
+        self, expression: FilterExpression, parameters: list[Any]
+    ) -> str:
+        if expression.kind == "predicate" and expression.predicate is not None:
+            return self._compile_predicate(expression.predicate, parameters)
+        if expression.kind == "not" and len(expression.children) == 1:
+            return f"NOT ({self._compile_filter_expression(expression.children[0], parameters)})"
+        if expression.kind in {"and", "or"} and expression.children:
+            operator = " AND " if expression.kind == "and" else " OR "
+            compiled = [self._compile_filter_expression(child, parameters) for child in expression.children]
+            return "(" + operator.join(compiled) + ")"
+        raise ValueError(f"Invalid filter expression kind: {expression.kind}")
+
+    def _compile_predicate(
+        self, predicate: Predicate | DateRangePredicate, parameters: list[Any]
+    ) -> str:
+        if isinstance(predicate, DateRangePredicate):
+            clauses: list[str] = []
+            if predicate.start != date.min:
+                clauses.append(f"{predicate.column} >= {self.dialect.placeholder}")
+                parameters.append(predicate.start.isoformat())
+            if predicate.end != date.max:
+                clauses.append(f"{predicate.column} < {self.dialect.placeholder}")
+                parameters.append(predicate.end.isoformat())
+            return " AND ".join(clauses) or "1 = 1"
+        if predicate.operator == "BETWEEN":
+            start, end = predicate.value
+            parameters.extend([start, end])
+            return (
+                f"{predicate.column} BETWEEN {self.dialect.placeholder} "
+                f"AND {self.dialect.placeholder}"
+            )
+        if predicate.operator in {"IS NULL", "IS NOT NULL"}:
+            return f"{predicate.column} {predicate.operator}"
+        if predicate.operator == "IN":
+            values = predicate.value if isinstance(predicate.value, (list, tuple)) else ()
+            if not values:
+                raise ValueError("IN requires at least one value")
+            parameters.extend(values)
+            placeholders = ", ".join(self.dialect.placeholder for _ in values)
+            return f"{predicate.column} IN ({placeholders})"
+        if predicate.operator in {"=", "!=", "LIKE", "NOT LIKE"} and isinstance(predicate.value, str):
+            parameters.append(predicate.value)
+            return (
+                f"LOWER({predicate.column}) {predicate.operator} "
+                f"LOWER({self.dialect.placeholder})"
+            )
+        parameters.append(predicate.value)
+        return f"{predicate.column} {predicate.operator} {self.dialect.placeholder}"
 
     def _compile_having(self, ast: QueryAST, parameters: list[Any]) -> str:
         clauses: list[str] = []

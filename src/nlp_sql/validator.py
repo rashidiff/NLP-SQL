@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from nlp_sql.query_ast import DateRangePredicate, Predicate, QueryAST
+from nlp_sql.query_ast import DateRangePredicate, FilterExpression, Predicate, QueryAST
 from nlp_sql.result import QueryError
 from nlp_sql.schema import SchemaRegistry
 
 SUPPORTED_AGGREGATIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
-SUPPORTED_OPERATORS = {">", "<", ">=", "<=", "=", "!=", "BETWEEN"}
+SUPPORTED_OPERATORS = {
+    ">", "<", ">=", "<=", "=", "!=", "BETWEEN", "IN", "LIKE", "NOT LIKE",
+    "IS NULL", "IS NOT NULL",
+}
 MAX_LIMIT = 1000
 
 
@@ -57,6 +60,10 @@ class ASTValidator:
             error = self._validate_predicate(ast.source, predicate)
             if error is not None:
                 return error
+        if ast.where is not None:
+            error = self._validate_filter_expression(ast.source, ast.where)
+            if error is not None:
+                return error
         for having_predicate in ast.having:
             if having_predicate.operator not in SUPPORTED_OPERATORS:
                 return QueryError(
@@ -87,6 +94,27 @@ class ASTValidator:
                 )
         if ast.having and not ast.group_by:
             return QueryError("INVALID_HAVING", "HAVING requires GROUP BY in this engine.")
+        return None
+
+    def _validate_filter_expression(
+        self, source: str, expression: FilterExpression
+    ) -> QueryError | None:
+        if expression.kind == "predicate":
+            if expression.predicate is None:
+                return QueryError("INVALID_FILTER", "Predicate expression is missing a predicate.")
+            return self._validate_predicate(source, expression.predicate)
+        if expression.kind == "not":
+            if len(expression.children) != 1:
+                return QueryError("INVALID_FILTER", "NOT requires exactly one child.")
+        elif expression.kind in {"and", "or"}:
+            if len(expression.children) < 2:
+                return QueryError("INVALID_FILTER", f"{expression.kind.upper()} requires two children.")
+        else:
+            return QueryError("INVALID_FILTER", f"Unsupported filter expression '{expression.kind}'.")
+        for child in expression.children:
+            error = self._validate_filter_expression(source, child)
+            if error is not None:
+                return error
         return None
 
     def _validate_predicate(
