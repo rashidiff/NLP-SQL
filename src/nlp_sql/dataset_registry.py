@@ -106,7 +106,9 @@ class RegistryQueryEngine:
         dataset = self._resolve_dataset(query)
         if dataset is None:
             return self._ambiguity_result(query)
-        return self._engine(dataset).parse(query, conversation=conversation)
+        return self._attach_dataset(
+            self._engine(dataset).parse(query, conversation=conversation), dataset.id
+        )
 
     def explain(
         self, query: str, conversation: ConversationContext | None = None
@@ -114,7 +116,9 @@ class RegistryQueryEngine:
         dataset = self._resolve_dataset(query)
         if dataset is None:
             return self._ambiguity_result(query)
-        return self._engine(dataset).explain(query, conversation=conversation)
+        return self._attach_dataset(
+            self._engine(dataset).explain(query, conversation=conversation), dataset.id
+        )
 
     def execute(
         self,
@@ -125,8 +129,11 @@ class RegistryQueryEngine:
         dataset = self._resolve_dataset(query)
         if dataset is None:
             return self._ambiguity_result(query)
-        return self._engine(dataset).execute(
-            query, max_rows=max_rows, conversation=conversation
+        return self._attach_dataset(
+            self._engine(dataset).execute(
+                query, max_rows=max_rows, conversation=conversation
+            ),
+            dataset.id,
         )
 
     def _engine(self, dataset: DatasetInfo) -> NlpSqlEngine:
@@ -152,13 +159,34 @@ class RegistryQueryEngine:
         return self._registry.get(str(candidates[0]["dataset_id"]))
 
     def _ambiguity_result(self, query: str) -> PipelineResult:
+        candidates = self._registry.search_datasets(query, top_k=3)
         return PipelineResult(
             success=False,
             requires_clarification=True,
+            schema_candidates=candidates,
             error=QueryError(
                 "AMBIGUOUS_DATASET",
                 f"Could not confidently choose a dataset for: {query}",
             ),
+        )
+
+    def _attach_dataset(self, result: PipelineResult, dataset_id: str) -> PipelineResult:
+        return PipelineResult(
+            success=result.success,
+            ast=result.ast,
+            sql=result.sql,
+            error=result.error,
+            requires_clarification=result.requires_clarification,
+            interpretation=result.interpretation,
+            matched_rules=result.matched_rules,
+            rows=result.rows,
+            schema_candidates=result.schema_candidates,
+            adaptive_decision=result.adaptive_decision,
+            confidence=result.confidence,
+            candidate_count=result.candidate_count,
+            execution_plan=result.execution_plan,
+            trace={**(result.trace or {}), "dataset_id": dataset_id},
+            dataset_id=dataset_id,
         )
 
 

@@ -42,6 +42,7 @@ class PipelineResult:
     candidate_count: int = 0
     execution_plan: list[dict[str, Any]] | None = None
     trace: dict[str, Any] | None = None
+    dataset_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"success": self.success}
@@ -71,4 +72,6 @@ class PipelineResult:
             payload["execution_plan"] = self.execution_plan
         if self.trace is not None:
             payload["trace"] = self.trace
+        if self.dataset_id is not None:
+            payload["dataset_id"] = self.dataset_id
         return payload
