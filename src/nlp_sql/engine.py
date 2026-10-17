@@ -169,7 +169,18 @@ class NlpSqlEngine:
                 matched_rules=parsed.matched_rules,
                 schema_candidates=parsed.schema_candidates,
             )
-        rows = self._executor.execute(parsed.sql, max_rows=max_rows)
+        try:
+            rows = self._executor.execute(parsed.sql, max_rows=max_rows)
+        except Exception as exc:
+            return PipelineResult(
+                success=False,
+                ast=parsed.ast,
+                sql=parsed.sql,
+                error=QueryError("DATABASE_EXECUTION_FAILED", str(exc)),
+                interpretation=parsed.interpretation,
+                matched_rules=parsed.matched_rules,
+                schema_candidates=parsed.schema_candidates,
+            )
         return PipelineResult(
             success=True,
             ast=parsed.ast,
