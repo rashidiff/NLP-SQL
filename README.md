@@ -1,7 +1,7 @@
 # NLP-SQL
 
-NLP-SQL is a deterministic, safety-oriented natural-language query engine for
-turning supported English questions into validated, parameterized SQL.
+NLP-SQL is a schema-aware, safety-oriented natural-language query engine for
+turning natural-language questions into validated, parameterized SQL.
 
 The central contract is still `QueryAST`. Natural language never becomes SQL
 directly. Every query must pass through structured parsing, AST validation,
@@ -9,9 +9,9 @@ parameterized compilation, and SQL safety validation before execution.
 
 The project has evolved into a hybrid semantic query system:
 
-- deterministic rule-based parsing for supported grammar;
-- schema retrieval over datasets, tables, columns, aliases, descriptions, and
-  representative values;
+- deterministic rule-based parsing as a fast fallback;
+- schema retrieval over datasets, tables, columns, aliases, descriptions,
+  relational metadata, profiles, and representative values;
 - local embedding retrieval for schema matching only, never SQL generation;
 - adaptive vector search telemetry and interpretable search-budget policy;
 - SQLite-backed embedding storage with a bounded in-memory LRU cache;
@@ -38,12 +38,12 @@ Natural-language query
        -> local embedding retrieval
        -> hybrid ranking
        -> optional schema graph expansion
-  -> deterministic semantic parser
-  -> typed QueryAST
+  -> LLM semantic planner or deterministic fallback
+  -> typed QueryAST and boolean filter tree
   -> AST validation
   -> parameterized SQL compilation
   -> SQL safety validation
-  -> optional SQLite execution
+  -> EXPLAIN and guarded read-only SQLite execution
 ```
 
 Retrieval and telemetry can inform explanations and future adaptive ranking, but
@@ -98,6 +98,11 @@ nlp-sql parse "show expensive homes with at least four bedrooms"
 existing deterministic parser remains the fallback when the LLM is disabled,
 unavailable, ambiguous, or produces an invalid plan. Both paths use the same
 AST validator, parameterized compiler, and SQL safety checks.
+
+When a SQLite housing database is opened, the engine profiles whitelisted
+columns (null ratio, distinct count, min/max, and sample values) and attaches
+that evidence to schema retrieval documents. Execution results can include the
+SQLite query plan under `execution_plan`.
 
 ## CLI Usage
 
@@ -175,6 +180,10 @@ graph = SchemaGraph.from_registry(registry)
 - User values are passed as SQL parameters.
 - SQL safety checks reject write operations and stacked statements.
 - Retrieval evidence cannot directly produce SQL.
+- Nested boolean filter expressions support AND/OR/NOT and operators such as
+  IN, LIKE, and IS NULL.
+- Joins are represented in the AST and validated before compilation.
+- SQLite execution is read-only and guarded by a row limit and timeout.
 - MCP-style tools call the same engine methods and cannot bypass validation.
 
 ## Development

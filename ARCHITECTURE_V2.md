@@ -1,6 +1,6 @@
 # Architecture V2
 
-NLP-SQL remains a deterministic `QueryAST`-centered system. The V2 architecture
+NLP-SQL remains a typed `QueryAST`-centered system. The V2 architecture
 adds semantic retrieval, adaptive vector telemetry, disk-backed embedding
 storage, multi-dataset metadata, and ambiguity-aware evaluation around that
 contract.
@@ -19,10 +19,10 @@ contract.
                    Schema Graph Expansion
                            |
                            v
-                 Deterministic Parser
+             LLM Planner / Deterministic Fallback
                            |
                            v
-                      QueryAST
+                QueryAST + Filter Tree
                            |
                      Validator
                            |
@@ -30,7 +30,7 @@ contract.
                            |
                   Safe Parameterized SQL
                            |
-                       Executor
+                 EXPLAIN + Guarded Executor
                            |
                          Result
 ```
@@ -76,9 +76,13 @@ Edges include:
 Traversal expands retrieved schema candidates transparently. There is no GNN or
 opaque learned graph model.
 
+SQLite primary keys and foreign keys are extracted into the schema model and
+materialized as graph edges when present. Column profiling adds null ratios,
+distinct counts, ranges, and representative values to retrieval documents.
+
 ## Adaptive Interpretation
 
 `AdaptiveDecision` exposes candidate interpretations, evidence, selected
-candidate, confidence, and fallback reason. The current implementation ranks the
-deterministic parser output with retrieval and execution evidence. It does not
-silently change semantics after execution.
+candidate, confidence, and fallback reason. The LLM path can return multiple
+structured candidates; a small confidence margin triggers clarification instead
+of silently selecting an ambiguous interpretation.
