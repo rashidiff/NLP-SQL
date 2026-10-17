@@ -229,7 +229,7 @@ class LLMParser:
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
             "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
             "predicate:{column,operator,value}, children:[...]}, "
-            "joins [{table,left_column,right_column,join_type:'INNER'|'LEFT'}], "
+            "joins [{table,left_table,left_column,right_column,join_type:'INNER'|'LEFT'}], "
             "prefer declared relationships when choosing joins. "
             "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
             "limit integer or null, status='inferred'."
@@ -285,6 +285,7 @@ class LLMParser:
                 left_column=_required_string(item, "left_column"),
                 right_column=_required_string(item, "right_column"),
                 join_type=str(item.get("join_type", "INNER")).upper(),
+                left_table=item.get("left_table"),
             )
             for item in _list_of_dicts(payload.get("joins", []), "joins")
         )

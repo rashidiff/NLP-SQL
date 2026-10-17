@@ -27,10 +27,14 @@ class ASTValidator:
                 return QueryError("UNSUPPORTED_JOIN", f"Unsupported join type {join.join_type}.")
             if not self._schema.has_table(join.table):
                 return QueryError("UNKNOWN_TABLE", f"Table '{join.table}' is not configured.")
-            if not self._schema.has_column(ast.source, join.left_column):
+            available_tables = {ast.source, *(item.table for item in ast.joins)}
+            left_table = join.left_table or ast.source
+            if left_table not in available_tables:
+                return QueryError("UNKNOWN_TABLE", f"Join table '{left_table}' is not configured.")
+            if not self._schema.has_column(left_table, join.left_column):
                 return QueryError(
                     "UNKNOWN_COLUMN",
-                    f"Join column '{join.left_column}' is not valid for {ast.source}.",
+                    f"Join column '{join.left_column}' is not valid for {left_table}.",
                 )
             if not self._schema.has_column(join.table, join.right_column):
                 return QueryError(

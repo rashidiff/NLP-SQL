@@ -40,7 +40,7 @@ class SqlCompiler:
                     "JOIN",
                     self.dialect.quote_identifier(join.table),
                     "ON",
-                    f"{ast.source}.{join.left_column} = "
+                    f"{join.left_table or ast.source}.{join.left_column} = "
                     f"{join.table}.{join.right_column}",
                 ]
             )

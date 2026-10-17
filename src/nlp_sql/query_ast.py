@@ -67,6 +67,7 @@ class JoinExpression:
     left_column: str
     right_column: str
     join_type: str = "INNER"
+    left_table: str | None = None
 
 
 @dataclass(frozen=True)
