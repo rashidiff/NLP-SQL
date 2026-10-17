@@ -208,6 +208,42 @@ class ASTValidator:
             )
         if predicate.operator not in SUPPORTED_OPERATORS:
             return QueryError("UNSUPPORTED_OPERATOR", f"Unsupported operator {predicate.operator}.")
+        value_error = self._validate_value(ast, predicate)
+        if value_error is not None:
+            return value_error
+        return None
+
+    def _validate_value(self, ast: QueryAST, predicate: Predicate) -> QueryError | None:
+        if predicate.operator in {"IS NULL", "IS NOT NULL", "EXISTS"}:
+            return None
+        column = predicate.column.split(".", 1)[-1]
+        table = predicate.column.split(".", 1)[0] if "." in predicate.column else ast.source
+        metadata = self._schema.get_column(table, column)
+        if metadata is None:
+            return None
+        values: object = predicate.value
+        if predicate.operator == "BETWEEN":
+            if not isinstance(values, (tuple, list)) or len(values) != 2:
+                return QueryError("INVALID_VALUE", "BETWEEN requires exactly two values.")
+            values = tuple(values)
+        elif predicate.operator in {"IN", "NOT IN"}:
+            if not isinstance(values, (tuple, list)) or not values:
+                return QueryError("INVALID_VALUE", "IN requires a non-empty value list.")
+        else:
+            values = (values,)
+        for value in values:
+            if metadata.type in {"integer", "decimal"} and (
+                isinstance(value, bool) or not isinstance(value, (int, float))
+            ):
+                return QueryError(
+                    "INVALID_VALUE",
+                    f"Column '{predicate.column}' requires numeric values.",
+                )
+            if metadata.type == "datetime" and not isinstance(value, str):
+                return QueryError(
+                    "INVALID_VALUE",
+                    f"Column '{predicate.column}' requires date strings.",
+                )
         return None
 
 
