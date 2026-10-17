@@ -16,6 +16,7 @@ from nlp_sql.evaluation.metrics import (
     ast_structurally_equivalent,
     schema_linking_metrics,
     sql_equivalent,
+    result_sets_equivalent,
 )
 
 
@@ -52,6 +53,33 @@ class EvaluationRunner:
                 if getattr(getattr(result, "error", None), "code", "") in {"FORBIDDEN_OPERATION", "UNSAFE_SQL"}
                 else FailureCategory.UNSUPPORTED_CONSTRUCTION,
                 details={"error": getattr(getattr(result, "error", None), "code", None)},
+            )
+        if case.expected_result is not None:
+            execution = self.engine.execute(case.question, max_rows=max(len(case.expected_result), 1))
+            if not execution.success or execution.rows is None:
+                return CaseEvaluation(
+                    case_id=case.id,
+                    success=False,
+                    matched_level=None,
+                    failure_category=FailureCategory.EXECUTION_FAILURE,
+                    details={
+                        "error": getattr(getattr(execution, "error", None), "code", None),
+                    },
+                )
+            equivalent = result_sets_equivalent(
+                tuple(execution.rows),
+                case.expected_result,
+                ordered=case.ordered,
+                float_tolerance=case.float_tolerance,
+            )
+            if equivalent:
+                return CaseEvaluation(case.id, True, "execution", None, {})
+            return CaseEvaluation(
+                case_id=case.id,
+                success=False,
+                matched_level="execution",
+                failure_category=FailureCategory.EXECUTION_FAILURE,
+                details={"expected_rows": len(case.expected_result), "actual_rows": len(execution.rows)},
             )
         candidate_ast = getattr(result, "ast", None)
         candidate_sql = getattr(result, "sql", None)
