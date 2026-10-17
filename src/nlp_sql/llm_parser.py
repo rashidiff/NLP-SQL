@@ -87,6 +87,7 @@ class LLMParser:
                 conversation=conversation,
             )
             candidate_count = 0
+            selected_confidence: float | None = None
             candidates = payload.get("candidates")
             if isinstance(candidates, list) and candidates:
                 valid_candidates = [item for item in candidates if isinstance(item, dict)]
@@ -94,6 +95,7 @@ class LLMParser:
                     raise ValueError("LLM candidates must be objects.")
                 valid_candidates.sort(key=lambda item: float(item.get("confidence", 0.0)), reverse=True)
                 top_confidence = float(valid_candidates[0].get("confidence", 0.0))
+                selected_confidence = _confidence(top_confidence)
                 if len(valid_candidates) > 1:
                     second_confidence = float(valid_candidates[1].get("confidence", 0.0))
                     if top_confidence - second_confidence < 0.08:
@@ -131,7 +133,11 @@ class LLMParser:
             ast=ast,
             interpretation={"source": ast.source, "status": ast.status, "parser": "llm"},
             matched_rules=("parser:llm",),
-            confidence=_confidence(payload.get("confidence", 0.85)),
+            confidence=(
+                selected_confidence
+                if selected_confidence is not None
+                else _confidence(payload.get("confidence", 0.85))
+            ),
             candidate_count=candidate_count,
         )
 
