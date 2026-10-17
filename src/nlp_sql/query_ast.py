@@ -53,6 +53,14 @@ class HavingPredicate:
 
 
 @dataclass(frozen=True)
+class JoinExpression:
+    table: str
+    left_column: str
+    right_column: str
+    join_type: str = "INNER"
+
+
+@dataclass(frozen=True)
 class OrderBy:
     column: str | None = None
     direction: SortDirection = SortDirection.ASC
@@ -63,6 +71,7 @@ class OrderBy:
 class QueryAST:
     type: QueryType
     source: str
+    joins: tuple[JoinExpression, ...] = ()
     select: tuple[ColumnExpression, ...] = ()
     aggregations: tuple[AggregationExpression, ...] = ()
     filters: tuple[Predicate | DateRangePredicate, ...] = ()

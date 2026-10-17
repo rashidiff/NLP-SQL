@@ -171,6 +171,7 @@ graph = SchemaGraph.from_registry(registry)
 
 - Only structured `QueryAST` objects are compiled.
 - Tables, columns, operators, aggregations, ordering, and limits are validated.
+- Join tables and join keys are validated against the configured schema.
 - User values are passed as SQL parameters.
 - SQL safety checks reject write operations and stacked statements.
 - Retrieval evidence cannot directly produce SQL.

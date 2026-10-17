@@ -33,6 +33,17 @@ class SqlCompiler:
             "FROM",
             self.dialect.quote_identifier(ast.source),
         ]
+        for join in ast.joins:
+            sql.extend(
+                [
+                    join.join_type,
+                    "JOIN",
+                    self.dialect.quote_identifier(join.table),
+                    "ON",
+                    f"{ast.source}.{join.left_column} = "
+                    f"{join.table}.{join.right_column}",
+                ]
+            )
         where_sql = self._compile_where(ast, parameters)
         if where_sql:
             sql.extend(["WHERE", where_sql])

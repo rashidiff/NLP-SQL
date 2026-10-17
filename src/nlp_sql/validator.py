@@ -19,6 +19,21 @@ class ASTValidator:
     def validate(self, ast: QueryAST) -> QueryError | None:
         if not self._schema.has_table(ast.source):
             return QueryError("UNKNOWN_TABLE", f"Table '{ast.source}' is not configured.")
+        for join in ast.joins:
+            if join.join_type not in {"INNER", "LEFT", "RIGHT", "FULL"}:
+                return QueryError("UNSUPPORTED_JOIN", f"Unsupported join type {join.join_type}.")
+            if not self._schema.has_table(join.table):
+                return QueryError("UNKNOWN_TABLE", f"Table '{join.table}' is not configured.")
+            if not self._schema.has_column(ast.source, join.left_column):
+                return QueryError(
+                    "UNKNOWN_COLUMN",
+                    f"Join column '{join.left_column}' is not valid for {ast.source}.",
+                )
+            if not self._schema.has_column(join.table, join.right_column):
+                return QueryError(
+                    "UNKNOWN_COLUMN",
+                    f"Join column '{join.right_column}' is not valid for {join.table}.",
+                )
         if ast.limit is not None and not (1 <= ast.limit <= self._max_limit):
             return QueryError("INVALID_LIMIT", f"Limit must be between 1 and {self._max_limit}.")
         for column in ast.select:

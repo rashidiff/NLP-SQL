@@ -19,6 +19,7 @@ from nlp_sql.query_ast import (
     ColumnExpression,
     DateRangePredicate,
     HavingPredicate,
+    JoinExpression,
     OrderBy,
     Predicate,
     QueryAST,
@@ -147,6 +148,7 @@ class LLMParser:
             "aggregations [{type:'aggregation',function,column,alias}], filters "
             "([{column,operator,value}] or {column,start,end}), having "
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
+            "joins [{table,left_column,right_column,join_type:'INNER'|'LEFT'}], "
             "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
             "limit integer or null, status='inferred'."
         )
@@ -191,6 +193,15 @@ class LLMParser:
             )
             for item in _list_of_dicts(payload.get("order_by", []), "order_by")
         )
+        joins = tuple(
+            JoinExpression(
+                table=_required_string(item, "table"),
+                left_column=_required_string(item, "left_column"),
+                right_column=_required_string(item, "right_column"),
+                join_type=str(item.get("join_type", "INNER")).upper(),
+            )
+            for item in _list_of_dicts(payload.get("joins", []), "joins")
+        )
         limit = payload.get("limit")
         if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
             raise ValueError("limit must be an integer or null")
@@ -205,6 +216,7 @@ class LLMParser:
         return QueryAST(
             type=QueryType.SELECT,
             source=source,
+            joins=joins,
             select=select or (ColumnExpression("column", "*"),),
             aggregations=aggregations,
             filters=filters + date_filters,
