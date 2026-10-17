@@ -81,6 +81,7 @@ class LLMParser:
         feedback: str | None = None,
         schema_context: tuple[dict[str, Any], ...] = (),
         conversation: ConversationContext | None = None,
+        join_context: tuple[dict[str, Any], ...] = (),
     ) -> PipelineResult:
         try:
             payload = self._request(
@@ -88,6 +89,7 @@ class LLMParser:
                 feedback=feedback,
                 schema_context=schema_context,
                 conversation=conversation,
+                join_context=join_context,
             )
             candidate_count = 0
             selected_confidence: float | None = None
@@ -151,6 +153,7 @@ class LLMParser:
         feedback: str | None = None,
         schema_context: tuple[dict[str, Any], ...] = (),
         conversation: ConversationContext | None = None,
+        join_context: tuple[dict[str, Any], ...] = (),
     ) -> dict[str, Any]:
         body = {
             "model": self._model,
@@ -162,6 +165,7 @@ class LLMParser:
                         feedback=feedback,
                         schema_context=schema_context,
                         conversation=conversation,
+                        join_context=join_context,
                     ),
                 },
                 {"role": "user", "content": query},
@@ -220,6 +224,7 @@ class LLMParser:
         feedback: str | None = None,
         schema_context: tuple[dict[str, Any], ...] = (),
         conversation: ConversationContext | None = None,
+        join_context: tuple[dict[str, Any], ...] = (),
     ) -> str:
         schema = {
             table.name: {
@@ -247,6 +252,7 @@ class LLMParser:
         }
         context = json.dumps(schema_context, sort_keys=True) if schema_context else "[]"
         history = json.dumps(conversation.as_messages() if conversation else (), ensure_ascii=False)
+        paths = json.dumps(join_context, sort_keys=True)
         prompt = (
             "You are a semantic query planner. Convert the user's natural-language "
             "question into JSON matching the QueryAST contract below. Never write SQL. "
@@ -257,6 +263,7 @@ class LLMParser:
             f"Today is {today}. Schema context: {json.dumps(schema_for_prompt, sort_keys=True)}. "
             f"Relevant retrieved schema context: {context}. "
             f"Recent conversation context: {history}. Resolve follow-up references using it. "
+            f"Available validated join paths: {paths}. "
             "JSON fields: type='select', source, select [{type:'column',name}], "
             "distinct boolean, aggregations [{type:'aggregation',function,column,alias,distinct}], filters "
             "([{column,operator,value}] or {column,start,end}; a subquery value is "

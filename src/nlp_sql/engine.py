@@ -17,6 +17,7 @@ from nlp_sql.datasets import (
 from nlp_sql.embedding_parser import EmbeddingParser
 from nlp_sql.executor import SQLiteExecutor
 from nlp_sql.llm_parser import LLMParser
+from nlp_sql.join_planner import JoinPlanner
 from nlp_sql.parser import RuleBasedParser
 from nlp_sql.result import PipelineResult, QueryError
 from nlp_sql.retrieval import HybridSchemaRetriever, documents_from_schema
@@ -37,6 +38,7 @@ class NlpSqlEngine:
         dialect: SqlDialect | None = None,
     ) -> None:
         self._schema = schema or SchemaRegistry.default()
+        self._join_planner = JoinPlanner(self._schema)
         self._parser = RuleBasedParser(self._schema, today=today)
         self._embedding_parser = EmbeddingParser(self._schema, today=today)
         self._validator = ASTValidator(self._schema)
@@ -304,8 +306,12 @@ class NlpSqlEngine:
     ) -> PipelineResult:
         if self._llm_parser is not None:
             schema_context = self.search_schema(query)
+            join_context = self._retrieved_join_paths(schema_context)
             llm_result = self._llm_parser.parse(
-                query, schema_context=schema_context, conversation=conversation
+                query,
+                schema_context=schema_context,
+                conversation=conversation,
+                join_context=join_context,
             )
             if llm_result.success and llm_result.ast is not None:
                 validation_error = self._validator.validate(llm_result.ast)
@@ -316,6 +322,7 @@ class NlpSqlEngine:
                     feedback=f"{validation_error.code}: {validation_error.message}",
                     schema_context=schema_context,
                     conversation=conversation,
+                    join_context=join_context,
                 )
                 if retry.success and retry.ast is not None:
                     retry_error = self._validator.validate(retry.ast)
@@ -331,6 +338,41 @@ class NlpSqlEngine:
         if embedded.error is not None and embedded.error.code == "FORBIDDEN_OPERATION":
             return embedded
         return self._parser.parse(query)
+
+    def _retrieved_join_paths(
+        self, schema_context: tuple[dict[str, object], ...]
+    ) -> tuple[dict[str, object], ...]:
+        tables = sorted(
+            {
+                str(candidate["table"])
+                for candidate in schema_context
+                if candidate.get("kind") == "table" and candidate.get("table")
+            }
+        )
+        paths: list[dict[str, object]] = []
+        for source in tables:
+            for target in tables:
+                if source >= target:
+                    continue
+                path = self._join_planner.find_path(source, target)
+                if path is None or len(path.joins) > 3:
+                    continue
+                paths.append(
+                    {
+                        "source": source,
+                        "target": target,
+                        "joins": [
+                            {
+                                "table": join.table,
+                                "left_table": join.left_table,
+                                "left_column": join.left_column,
+                                "right_column": join.right_column,
+                            }
+                            for join in path.joins
+                        ],
+                    }
+                )
+        return tuple(paths)
 
     def _attach_schema_candidates(
         self,
