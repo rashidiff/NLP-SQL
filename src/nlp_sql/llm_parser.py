@@ -201,7 +201,17 @@ class LLMParser:
         }
         today = self._today.isoformat() if self._today else "unknown"
         schema_for_prompt: object = schema if not schema_context else {
-            "retrieved_schema_candidates": schema_context
+            "retrieved_schema_candidates": schema_context,
+            "relationships": [
+                {
+                    "table": foreign_key.table,
+                    "column": foreign_key.column,
+                    "referenced_table": foreign_key.referenced_table,
+                    "referenced_column": foreign_key.referenced_column,
+                }
+                for table in self._schema.tables.values()
+                for foreign_key in table.foreign_keys
+            ],
         }
         context = json.dumps(schema_context, sort_keys=True) if schema_context else "[]"
         history = json.dumps(conversation.as_messages() if conversation else (), ensure_ascii=False)
@@ -220,6 +230,7 @@ class LLMParser:
             "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
             "predicate:{column,operator,value}, children:[...]}, "
             "joins [{table,left_column,right_column,join_type:'INNER'|'LEFT'}], "
+            "prefer declared relationships when choosing joins. "
             "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
             "limit integer or null, status='inferred'."
             " You may instead return candidates:[{confidence,plan},...]. "
