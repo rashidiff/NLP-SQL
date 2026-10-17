@@ -54,6 +54,7 @@ class SchemaDocument:
             self.description or "",
             *(self.aliases or ()),
             *(self.representative_values or ()),
+            *(self.metadata.values() if self.metadata else ()),
         ]
         if self.table:
             parts.append(f"table {self.table}")
@@ -166,6 +167,14 @@ def documents_from_schema(
         )
         for column in table.columns.values():
             key = f"{table.name}.{column.name}"
+            metadata: dict[str, str] = {}
+            if column.name in table.primary_key:
+                metadata["key"] = "primary_key"
+            foreign_keys = tuple(item for item in table.foreign_keys if item.column == column.name)
+            if foreign_keys:
+                metadata["references"] = ",".join(
+                    f"{item.referenced_table}.{item.referenced_column}" for item in foreign_keys
+                )
             documents.append(
                 SchemaDocument(
                     dataset_id=dataset_id,
@@ -178,6 +187,7 @@ def documents_from_schema(
                     data_type=column.type,
                     description=f"{humanize(column.name)} column on {humanize(table.name)}",
                     representative_values=table_values.get(key, ()),
+                    metadata=metadata,
                 )
             )
     return tuple(documents)

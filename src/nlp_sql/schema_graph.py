@@ -53,6 +53,7 @@ class SchemaGraph:
             ):
                 graph.add_document(document)
         graph._infer_lightweight_edges()
+        graph._add_foreign_key_edges(registry)
         return graph
 
     def add_document(self, document: SchemaDocument) -> None:
@@ -146,3 +147,20 @@ class SchemaGraph:
             for index, source in enumerate(keys):
                 for target in keys[index + 1 :]:
                     self.add_edge(source, target, SchemaEdgeKind.SIMILAR_TO, 0.5)
+
+    def _add_foreign_key_edges(self, registry: DatasetRegistry) -> None:
+        for dataset in registry.list_datasets():
+            for foreign_key in dataset.schema.foreign_keys():
+                source = "/".join(
+                    (dataset.id, CandidateKind.COLUMN.value, foreign_key.table, foreign_key.column)
+                )
+                target = "/".join(
+                    (
+                        dataset.id,
+                        CandidateKind.COLUMN.value,
+                        foreign_key.referenced_table,
+                        foreign_key.referenced_column,
+                    )
+                )
+                if source in self._nodes and target in self._nodes:
+                    self.add_edge(source, target, SchemaEdgeKind.FOREIGN_KEY)

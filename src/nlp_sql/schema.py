@@ -23,6 +23,8 @@ class Table:
     name: str
     aliases: tuple[str, ...]
     columns: dict[str, Column]
+    primary_key: tuple[str, ...] = ()
+    foreign_keys: tuple["ForeignKey", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,14 @@ class ColumnRef:
     table: str
     column: str
     type: str
+
+
+@dataclass(frozen=True)
+class ForeignKey:
+    table: str
+    column: str
+    referenced_table: str
+    referenced_column: str
 
 
 @dataclass(frozen=True)
@@ -62,6 +72,16 @@ class SchemaRegistry:
                 name=table_name,
                 aliases=tuple(table_data.get("aliases", (table_name,))),
                 columns=columns,
+                primary_key=tuple(table_data.get("primary_key", ())),
+                foreign_keys=tuple(
+                    ForeignKey(
+                        table=table_name,
+                        column=str(item["column"]),
+                        referenced_table=str(item["referenced_table"]),
+                        referenced_column=str(item["referenced_column"]),
+                    )
+                    for item in table_data.get("foreign_keys", ())
+                ),
             )
         return cls(tables)
 
@@ -96,6 +116,7 @@ class SchemaRegistry:
             ).fetchall()
             for (table_name,) in table_rows:
                 columns: dict[str, Column] = {}
+                primary_key: list[tuple[int, str]] = []
                 for _, column_name, sqlite_type, *_ in connection.execute(
                     f"PRAGMA table_info({table_name})"
                 ):
@@ -107,10 +128,28 @@ class SchemaRegistry:
                         type=_map_sqlite_type(column_name, sqlite_type),
                         aliases=aliases,
                     )
+                for _, column_name, _, _, _, pk in connection.execute(
+                    f"PRAGMA table_info({table_name})"
+                ):
+                    if pk:
+                        primary_key.append((int(pk), str(column_name)))
+                foreign_keys = tuple(
+                    ForeignKey(
+                        table=table_name,
+                        column=str(column_name),
+                        referenced_table=str(referenced_table),
+                        referenced_column=str(referenced_column),
+                    )
+                    for _, _, referenced_table, column_name, referenced_column, _ in connection.execute(
+                        f"PRAGMA foreign_key_list({table_name})"
+                    )
+                )
                 tables[table_name] = Table(
                     name=table_name,
                     aliases=_table_aliases(table_name, tuple(table_aliases.get(table_name, ()))),
                     columns=columns,
+                    primary_key=tuple(column for _, column in sorted(primary_key)),
+                    foreign_keys=foreign_keys,
                 )
         return cls(tables)
 
@@ -128,6 +167,10 @@ class SchemaRegistry:
         if not self.has_column(table, column):
             return None
         return self._tables[table].columns[column]
+
+    def foreign_keys(self, table: str | None = None) -> tuple[ForeignKey, ...]:
+        keys = tuple(key for item in self._tables.values() for key in item.foreign_keys)
+        return tuple(key for key in keys if table is None or key.table == table)
 
     def resolve_table(self, phrase: str) -> Resolution | None:
         alias = phrase.strip().lower()
