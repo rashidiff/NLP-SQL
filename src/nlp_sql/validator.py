@@ -8,6 +8,7 @@ from nlp_sql.query_ast import (
     Predicate,
     QueryAST,
     SubqueryExpression,
+    WindowExpression,
 )
 from nlp_sql.result import QueryError
 from nlp_sql.schema import SchemaRegistry
@@ -50,6 +51,20 @@ class ASTValidator:
         if ast.limit is not None and not (1 <= ast.limit <= self._max_limit):
             return QueryError("INVALID_LIMIT", f"Limit must be between 1 and {self._max_limit}.")
         for column in ast.select:
+            if isinstance(column, WindowExpression):
+                if column.function not in {
+                    "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD", "SUM", "AVG", "MIN", "MAX", "COUNT"
+                }:
+                    return QueryError("UNSUPPORTED_WINDOW", f"Unsupported window function {column.function}.")
+                if column.column != "*" and not self._has_query_column(ast, column.column):
+                    return QueryError("UNKNOWN_COLUMN", f"Column '{column.column}' is not valid for {ast.source}.")
+                for partition_column in column.partition_by:
+                    if not self._has_query_column(ast, partition_column):
+                        return QueryError("UNKNOWN_COLUMN", f"Column '{partition_column}' is not valid for {ast.source}.")
+                for window_order in column.order_by:
+                    if window_order.column and not self._has_query_column(ast, window_order.column):
+                        return QueryError("UNKNOWN_COLUMN", f"Column '{window_order.column}' is not valid for {ast.source}.")
+                continue
             if column.name != "*" and not self._has_query_column(ast, column.name):
                 return QueryError(
                     "UNKNOWN_COLUMN", f"Column '{column.name}' is not valid for {ast.source}."

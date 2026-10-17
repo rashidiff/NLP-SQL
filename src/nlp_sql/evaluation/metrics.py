@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from nlp_sql.query_ast import DateRangePredicate, Predicate, QueryAST
+from nlp_sql.query_ast import DateRangePredicate, Predicate, QueryAST, WindowExpression
 from nlp_sql.result import SqlQuery
 
 
@@ -68,7 +68,16 @@ def result_sets_equivalent(
 
 
 def _schema_items(ast: QueryAST) -> dict[str, set[str]]:
-    columns = {column.name for column in ast.select if column.name != "*"}
+    columns = {
+        column.name
+        for column in ast.select
+        if not isinstance(column, WindowExpression) and column.name != "*"
+    }
+    columns.update(
+        window.column
+        for window in ast.select
+        if isinstance(window, WindowExpression) and window.column != "*"
+    )
     columns.update(aggregation.column for aggregation in ast.aggregations)
     columns.update(order.column for order in ast.order_by if order.column)
     filters: set[str] = set()

@@ -12,6 +12,7 @@ from nlp_sql.query_ast import (
     Predicate,
     QueryAST,
     SubqueryExpression,
+    WindowExpression,
 )
 from nlp_sql.result import SqlQuery
 
@@ -80,7 +81,11 @@ class SqlCompiler:
 
     def _compile_select(self, ast: QueryAST) -> str:
         parts: list[str] = []
-        parts.extend(column.name for column in ast.select)
+        for column in ast.select:
+            if isinstance(column, WindowExpression):
+                parts.append(self._compile_window(column))
+            else:
+                parts.append(column.name)
         for aggregation in ast.aggregations:
             distinct = "DISTINCT " if aggregation.distinct else ""
             expression = f"{aggregation.function}({distinct}{aggregation.column})"
@@ -88,6 +93,19 @@ class SqlCompiler:
                 expression += f" AS {aggregation.alias}"
             parts.append(expression)
         return ", ".join(parts) if parts else "*"
+
+    def _compile_window(self, expression: WindowExpression) -> str:
+        argument = "*" if expression.column == "*" else expression.column
+        parts = [f"{expression.function}({argument})", "OVER ("]
+        if expression.partition_by:
+            parts.extend(["PARTITION BY", ", ".join(expression.partition_by)])
+        if expression.order_by:
+            if expression.partition_by:
+                parts.append("")
+            parts.extend(["ORDER BY", self._compile_order_items(expression.order_by)])
+        parts.append(")")
+        compiled = " ".join(part for part in parts if part)
+        return f"{compiled} AS {expression.alias}" if expression.alias else compiled
 
     def _compile_where(self, ast: QueryAST, parameters: list[Any]) -> str:
         if ast.where is not None:
@@ -181,8 +199,11 @@ class SqlCompiler:
         return self.dialect.placeholder_for(len(parameters) + offset + 1)
 
     def _compile_order_by(self, ast: QueryAST) -> str:
+        return self._compile_order_items(ast.order_by)
+
+    def _compile_order_items(self, orders: tuple[OrderBy, ...]) -> str:
         parts: list[str] = []
-        for order in ast.order_by:
+        for order in orders:
             if order.aggregation is not None:
                 distinct = "DISTINCT " if order.aggregation.distinct else ""
                 expression = f"{order.aggregation.function}({distinct}{order.aggregation.column})"

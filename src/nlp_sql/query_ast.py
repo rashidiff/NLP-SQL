@@ -84,12 +84,21 @@ class OrderBy:
 
 
 @dataclass(frozen=True)
+class WindowExpression:
+    function: str
+    column: str = "*"
+    partition_by: tuple[str, ...] = ()
+    order_by: tuple[OrderBy, ...] = ()
+    alias: str | None = None
+
+
+@dataclass(frozen=True)
 class QueryAST:
     type: QueryType
     source: str
     joins: tuple[JoinExpression, ...] = ()
     distinct: bool = False
-    select: tuple[ColumnExpression, ...] = ()
+    select: tuple[ColumnExpression | WindowExpression, ...] = ()
     aggregations: tuple[AggregationExpression, ...] = ()
     filters: tuple[Predicate | DateRangePredicate, ...] = ()
     where: FilterExpression | None = None

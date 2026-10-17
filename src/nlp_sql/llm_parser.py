@@ -27,6 +27,7 @@ from nlp_sql.query_ast import (
     QueryType,
     SortDirection,
     SubqueryExpression,
+    WindowExpression,
 )
 from nlp_sql.conversation import ConversationContext
 from nlp_sql.result import PipelineResult, QueryError
@@ -236,6 +237,7 @@ class LLMParser:
             "distinct boolean, aggregations [{type:'aggregation',function,column,alias,distinct}], filters "
             "([{column,operator,value}] or {column,start,end}; a subquery value is "
             "{subquery:{...same plan...}}), having "
+            "select items may also be window expressions {type:'window',function,column,partition_by,order_by,alias}, "
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
             "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
             "predicate:{column,operator,value}, children:[...]}, "
@@ -265,7 +267,7 @@ class LLMParser:
     def _ast_from_payload(self, payload: dict[str, Any]) -> QueryAST:
         source = _required_string(payload, "source")
         select = tuple(
-            ColumnExpression("column", _required_string(item, "name"))
+            self._select_expression(item)
             for item in _list_of_dicts(payload.get("select", []), "select")
         )
         aggregations = tuple(
@@ -334,6 +336,24 @@ class LLMParser:
             column=_required_string(item, "column"),
             alias=item.get("alias"),
             distinct=bool(item.get("distinct", False)),
+        )
+
+    def _select_expression(self, item: dict[str, Any]) -> ColumnExpression | WindowExpression:
+        if str(item.get("type", "column")).lower() != "window":
+            return ColumnExpression("column", _required_string(item, "name"))
+        orders = tuple(
+            OrderBy(
+                column=order.get("column"),
+                direction=SortDirection(str(order.get("direction", "ASC")).upper()),
+            )
+            for order in _list_of_dicts(item.get("order_by", []), "window.order_by")
+        )
+        return WindowExpression(
+            function=_required_string(item, "function").upper(),
+            column=str(item.get("column", "*")),
+            partition_by=tuple(str(value) for value in item.get("partition_by", [])),
+            order_by=orders,
+            alias=item.get("alias"),
         )
 
     def _predicate(self, item: dict[str, Any]) -> Predicate:
