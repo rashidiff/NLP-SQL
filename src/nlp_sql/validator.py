@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from nlp_sql.query_ast import DateRangePredicate, FilterExpression, Predicate, QueryAST
+from nlp_sql.query_ast import (
+    DateRangePredicate,
+    FilterExpression,
+    Predicate,
+    QueryAST,
+    SubqueryExpression,
+)
 from nlp_sql.result import QueryError
 from nlp_sql.schema import SchemaRegistry
 
 SUPPORTED_AGGREGATIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
 SUPPORTED_OPERATORS = {
     ">", "<", ">=", "<=", "=", "!=", "BETWEEN", "IN", "LIKE", "NOT LIKE",
-    "IS NULL", "IS NOT NULL",
+    "IS NULL", "IS NOT NULL", "NOT IN", "EXISTS",
 }
 MAX_LIMIT = 1000
 
@@ -133,6 +139,14 @@ class ASTValidator:
                     "UNKNOWN_COLUMN", f"Date column '{predicate.column}' is not valid for {ast.source}."
                 )
             return None
+        if predicate.operator == "EXISTS":
+            if not isinstance(predicate.value, SubqueryExpression):
+                return QueryError("INVALID_SUBQUERY", "EXISTS requires a subquery.")
+            return self.validate(predicate.value.query)
+        if predicate.operator in {"IN", "NOT IN"} and isinstance(
+            predicate.value, SubqueryExpression
+        ):
+            return self.validate(predicate.value.query)
         if not self._has_query_column(ast, predicate.column):
             return QueryError(
                 "UNKNOWN_COLUMN", f"Column '{predicate.column}' is not valid for {ast.source}."

@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from nlp_sql.query_ast import DateRangePredicate, FilterExpression, Predicate, QueryAST
+from nlp_sql.query_ast import (
+    DateRangePredicate,
+    FilterExpression,
+    Predicate,
+    QueryAST,
+    SubqueryExpression,
+)
 from nlp_sql.result import SqlQuery
 
 
@@ -35,6 +41,10 @@ class SqlCompiler:
 
     def compile(self, ast: QueryAST) -> SqlQuery:
         parameters: list[Any] = []
+        sql = self._compile_statement(ast, parameters)
+        return SqlQuery(sql, tuple(parameters))
+
+    def _compile_statement(self, ast: QueryAST, parameters: list[Any]) -> str:
         sql = [
             "SELECT",
             "DISTINCT" if ast.distinct else "",
@@ -66,7 +76,7 @@ class SqlCompiler:
         if ast.limit is not None:
             sql.extend(["LIMIT", self._placeholder(parameters)])
             parameters.append(ast.limit)
-        return SqlQuery(" ".join(part for part in sql if part), tuple(parameters))
+        return " ".join(part for part in sql if part)
 
     def _compile_select(self, ast: QueryAST) -> str:
         parts: list[str] = []
@@ -122,6 +132,9 @@ class SqlCompiler:
         if predicate.operator in {"IS NULL", "IS NOT NULL"}:
             return f"{predicate.column} {predicate.operator}"
         if predicate.operator == "IN":
+            if isinstance(predicate.value, SubqueryExpression):
+                subquery = self._compile_statement(predicate.value.query, parameters)
+                return f"{predicate.column} IN ({subquery})"
             values = predicate.value if isinstance(predicate.value, (list, tuple)) else ()
             if not values:
                 raise ValueError("IN requires at least one value")
@@ -130,6 +143,12 @@ class SqlCompiler:
             )
             parameters.extend(values)
             return f"{predicate.column} IN ({placeholders})"
+        if predicate.operator == "NOT IN" and isinstance(predicate.value, SubqueryExpression):
+            subquery = self._compile_statement(predicate.value.query, parameters)
+            return f"{predicate.column} NOT IN ({subquery})"
+        if predicate.operator == "EXISTS" and isinstance(predicate.value, SubqueryExpression):
+            subquery = self._compile_statement(predicate.value.query, parameters)
+            return f"EXISTS ({subquery})"
         if (
             isinstance(predicate.value, str)
             and predicate.operator in {"=", "!="}

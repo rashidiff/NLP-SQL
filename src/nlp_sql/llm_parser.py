@@ -26,6 +26,7 @@ from nlp_sql.query_ast import (
     QueryAST,
     QueryType,
     SortDirection,
+    SubqueryExpression,
 )
 from nlp_sql.conversation import ConversationContext
 from nlp_sql.result import PipelineResult, QueryError
@@ -233,7 +234,8 @@ class LLMParser:
             f"Recent conversation context: {history}. Resolve follow-up references using it. "
             "JSON fields: type='select', source, select [{type:'column',name}], "
             "distinct boolean, aggregations [{type:'aggregation',function,column,alias,distinct}], filters "
-            "([{column,operator,value}] or {column,start,end}), having "
+            "([{column,operator,value}] or {column,start,end}; a subquery value is "
+            "{subquery:{...same plan...}}), having "
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
             "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
             "predicate:{column,operator,value}, children:[...]}, "
@@ -335,10 +337,13 @@ class LLMParser:
         )
 
     def _predicate(self, item: dict[str, Any]) -> Predicate:
+        raw_value = item.get("value")
+        if isinstance(raw_value, dict) and isinstance(raw_value.get("subquery"), dict):
+            raw_value = SubqueryExpression(self._ast_from_payload(raw_value["subquery"]))
         return Predicate(
             column=_required_string(item, "column"),
             operator=_required_string(item, "operator").upper(),
-            value=item.get("value"),
+            value=raw_value,
         )
 
     def _filter_expression(self, item: dict[str, Any]) -> FilterExpression:

@@ -56,6 +56,11 @@ class FilterExpression:
 
 
 @dataclass(frozen=True)
+class SubqueryExpression:
+    query: "QueryAST"
+
+
+@dataclass(frozen=True)
 class HavingPredicate:
     left: AggregationExpression
     operator: str
