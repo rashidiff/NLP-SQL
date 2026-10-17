@@ -68,9 +68,9 @@ class LLMParser:
             temperature=float(os.getenv("NLP_SQL_LLM_TEMPERATURE", "0.2")),
         )
 
-    def parse(self, query: str) -> PipelineResult:
+    def parse(self, query: str, *, feedback: str | None = None) -> PipelineResult:
         try:
-            payload = self._request(query)
+            payload = self._request(query, feedback=feedback)
             if "clarification" in payload:
                 message = str(payload["clarification"]).strip()
                 if message:
@@ -92,12 +92,12 @@ class LLMParser:
             matched_rules=("parser:llm",),
         )
 
-    def _request(self, query: str) -> dict[str, Any]:
+    def _request(self, query: str, *, feedback: str | None = None) -> dict[str, Any]:
         body = {
             "model": self._model,
             "temperature": self._temperature,
             "messages": [
-                {"role": "system", "content": self._system_prompt()},
+                {"role": "system", "content": self._system_prompt(feedback=feedback)},
                 {"role": "user", "content": query},
             ],
             "response_format": {"type": "json_object"},
@@ -125,7 +125,7 @@ class LLMParser:
             raise ValueError("LLM response did not contain message content.")
         return self._decode_json(content)
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, *, feedback: str | None = None) -> str:
         schema = {
             table.name: {
                 "aliases": list(table.aliases),
@@ -137,7 +137,7 @@ class LLMParser:
             for table in self._schema.tables.values()
         }
         today = self._today.isoformat() if self._today else "unknown"
-        return (
+        prompt = (
             "You are a semantic query planner. Convert the user's natural-language "
             "question into JSON matching the QueryAST contract below. Never write SQL. "
             "Use only tables and columns from the supplied schema. If the question is "
@@ -150,6 +150,12 @@ class LLMParser:
             "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
             "limit integer or null, status='inferred'."
         )
+        if feedback:
+            prompt += (
+                " The previous plan was rejected by the validator. Correct it using "
+                f"this validator feedback: {feedback}"
+            )
+        return prompt
 
     def _decode_json(self, content: str) -> dict[str, Any]:
         cleaned = content.strip()

@@ -200,6 +200,14 @@ class NlpSqlEngine:
                 validation_error = self._validator.validate(llm_result.ast)
                 if validation_error is None:
                     return llm_result
+                retry = self._llm_parser.parse(
+                    query,
+                    feedback=f"{validation_error.code}: {validation_error.message}",
+                )
+                if retry.success and retry.ast is not None:
+                    retry_error = self._validator.validate(retry.ast)
+                    if retry_error is None:
+                        return retry
             if llm_result.requires_clarification:
                 return llm_result
         embedded = self._embedding_parser.parse(query)

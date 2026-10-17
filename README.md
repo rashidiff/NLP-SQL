@@ -83,6 +83,22 @@ python -m pip install -e ".[semantic]"
 The default semantic backend is a deterministic local hash embedding backend, so
 the project works without downloading a transformer model.
 
+Optional LLM semantic parsing can be enabled with an OpenAI-compatible chat
+completion endpoint. The model returns a structured query plan, never SQL:
+
+```bash
+# PowerShell
+$env:NLP_SQL_LLM_API_KEY = "..."
+$env:NLP_SQL_LLM_MODEL = "gpt-4o-mini"
+$env:NLP_SQL_LLM_BASE_URL = "https://api.openai.com/v1"
+nlp-sql parse "show expensive homes with at least four bedrooms"
+```
+
+`NLP_SQL_LLM_BASE_URL` may point to a compatible local or hosted endpoint. The
+existing deterministic parser remains the fallback when the LLM is disabled,
+unavailable, ambiguous, or produces an invalid plan. Both paths use the same
+AST validator, parameterized compiler, and SQL safety checks.
+
 ## CLI Usage
 
 Prepare the Nashville Housing SQLite database:

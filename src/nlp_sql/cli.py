@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nlp-sql",
-        description="Deterministic rule-based NLP-to-SQL over the Kaggle housing database.",
+        description="Schema-aware natural-language query engine with safe AST-to-SQL compilation.",
     )
     subparsers = parser.add_subparsers(dest="command")
 
