@@ -29,6 +29,7 @@ class WorkloadReport:
     repaired_queries: int = 0
     clarification_queries: int = 0
     execution_failures: int = 0
+    executed_queries: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -42,6 +43,7 @@ class WorkloadReport:
             "repaired_queries": self.repaired_queries,
             "clarification_queries": self.clarification_queries,
             "execution_failures": self.execution_failures,
+            "executed_queries": self.executed_queries,
         }
 
 
@@ -99,8 +101,9 @@ class WorkloadGenerator:
 
 
 class BenchmarkRunner:
-    def __init__(self, engine: NlpSqlEngine) -> None:
+    def __init__(self, engine: NlpSqlEngine, *, execute_queries: bool = False) -> None:
         self._engine = engine
+        self._execute_queries = execute_queries
 
     def run(self, name: str, workload: tuple[WorkloadQuery, ...]) -> WorkloadReport:
         latencies: list[float] = []
@@ -109,9 +112,14 @@ class BenchmarkRunner:
         repaired_queries = 0
         clarification_queries = 0
         execution_failures = 0
+        executed_queries = 0
         for query in workload:
             started = time.perf_counter()
-            result = self._engine.parse(query.text)
+            result = (
+                self._engine.execute(query.text)
+                if self._execute_queries
+                else self._engine.parse(query.text)
+            )
             latencies.append((time.perf_counter() - started) * 1000)
             successes += 1 if result.success else 0
             trace = result.trace or {}
@@ -121,6 +129,7 @@ class BenchmarkRunner:
             execution_failures += int(
                 result.error is not None and result.error.code == "DATABASE_EXECUTION_FAILED"
             )
+            executed_queries += int(self._execute_queries)
         sorted_latencies = sorted(latencies)
         p50 = _percentile(sorted_latencies, 0.50)
         p95 = _percentile(sorted_latencies, 0.95)
@@ -135,6 +144,7 @@ class BenchmarkRunner:
             repaired_queries=repaired_queries,
             clarification_queries=clarification_queries,
             execution_failures=execution_failures,
+            executed_queries=executed_queries,
         )
 
     def write_reports(self, reports: tuple[WorkloadReport, ...], output_dir: Path) -> None:
@@ -157,6 +167,7 @@ class BenchmarkRunner:
                     f"- repaired queries: {report.repaired_queries}",
                     f"- clarification queries: {report.clarification_queries}",
                     f"- execution failures: {report.execution_failures}",
+                    f"- executed queries: {report.executed_queries}",
                     "",
                 ]
             )
