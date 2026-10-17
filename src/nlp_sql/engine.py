@@ -14,6 +14,7 @@ from nlp_sql.datasets import (
 )
 from nlp_sql.embedding_parser import EmbeddingParser
 from nlp_sql.executor import SQLiteExecutor
+from nlp_sql.llm_parser import LLMParser
 from nlp_sql.parser import RuleBasedParser
 from nlp_sql.result import PipelineResult, QueryError
 from nlp_sql.retrieval import HybridSchemaRetriever, documents_from_schema
@@ -30,6 +31,7 @@ class NlpSqlEngine:
         today: date | None = None,
         executor: SQLiteExecutor | None = None,
         schema_retriever: SemanticSchemaRetriever | None = None,
+        llm_parser: LLMParser | None = None,
     ) -> None:
         self._schema = schema or SchemaRegistry.default()
         self._parser = RuleBasedParser(self._schema, today=today)
@@ -38,6 +40,7 @@ class NlpSqlEngine:
         self._compiler = SqlCompiler()
         self._safety = SafetyValidator()
         self._executor = executor
+        self._llm_parser = llm_parser or LLMParser.from_environment(self._schema, today=today)
         self._adaptive_interpreter = AdaptiveInterpreter()
         self._schema_retriever = schema_retriever or HybridSchemaRetriever(
             documents_from_schema(self._schema)
@@ -191,6 +194,14 @@ class NlpSqlEngine:
         return dict(stats())
 
     def _parse_with_hybrid_fallback(self, query: str) -> PipelineResult:
+        if self._llm_parser is not None:
+            llm_result = self._llm_parser.parse(query)
+            if llm_result.success and llm_result.ast is not None:
+                validation_error = self._validator.validate(llm_result.ast)
+                if validation_error is None:
+                    return llm_result
+            if llm_result.requires_clarification:
+                return llm_result
         embedded = self._embedding_parser.parse(query)
         if embedded.success and embedded.ast is not None:
             validation_error = self._validator.validate(embedded.ast)

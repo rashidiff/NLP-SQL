@@ -1,0 +1,246 @@
+"""LLM-backed semantic parsing into the safe QueryAST contract.
+
+The model is deliberately not allowed to generate SQL. It receives the schema
+and returns a small JSON query plan which is converted into QueryAST and then
+validated by the normal engine pipeline.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import urllib.error
+import urllib.request
+from datetime import date
+from typing import Any
+
+from nlp_sql.query_ast import (
+    AggregationExpression,
+    ColumnExpression,
+    DateRangePredicate,
+    HavingPredicate,
+    OrderBy,
+    Predicate,
+    QueryAST,
+    QueryType,
+    SortDirection,
+)
+from nlp_sql.result import PipelineResult, QueryError
+from nlp_sql.schema import SchemaRegistry
+
+
+class LLMParser:
+    """Parse natural language into QueryAST through an OpenAI-compatible API."""
+
+    def __init__(
+        self,
+        schema: SchemaRegistry,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        today: date | None = None,
+        timeout: float = 45.0,
+        temperature: float = 0.2,
+    ) -> None:
+        self._schema = schema
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._today = today
+        self._timeout = timeout
+        self._temperature = temperature
+
+    @classmethod
+    def from_environment(
+        cls, schema: SchemaRegistry, *, today: date | None = None
+    ) -> LLMParser | None:
+        api_key = os.getenv("NLP_SQL_LLM_API_KEY")
+        if not api_key:
+            return None
+        return cls(
+            schema,
+            base_url=os.getenv("NLP_SQL_LLM_BASE_URL", "https://api.openai.com/v1"),
+            api_key=api_key,
+            model=os.getenv("NLP_SQL_LLM_MODEL", "gpt-4o-mini"),
+            today=today,
+            timeout=float(os.getenv("NLP_SQL_LLM_TIMEOUT", "45")),
+            temperature=float(os.getenv("NLP_SQL_LLM_TEMPERATURE", "0.2")),
+        )
+
+    def parse(self, query: str) -> PipelineResult:
+        try:
+            payload = self._request(query)
+            if "clarification" in payload:
+                message = str(payload["clarification"]).strip()
+                if message:
+                    return PipelineResult(
+                        success=False,
+                        requires_clarification=True,
+                        error=QueryError("AMBIGUOUS_QUERY", message),
+                    )
+            ast = self._ast_from_payload(payload)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            return PipelineResult(
+                success=False,
+                error=QueryError("LLM_PARSE_FAILED", str(exc)),
+            )
+        return PipelineResult(
+            success=True,
+            ast=ast,
+            interpretation={"source": ast.source, "status": ast.status, "parser": "llm"},
+            matched_rules=("parser:llm",),
+        )
+
+    def _request(self, query: str) -> dict[str, Any]:
+        body = {
+            "model": self._model,
+            "temperature": self._temperature,
+            "messages": [
+                {"role": "system", "content": self._system_prompt()},
+                {"role": "user", "content": query},
+            ],
+            "response_format": {"type": "json_object"},
+        }
+        request = urllib.request.Request(
+            f"{self._base_url}/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                raw = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            raise ValueError(f"LLM HTTP {exc.code}: {detail}") from exc
+        choices = raw.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("LLM response did not contain choices.")
+        content = choices[0].get("message", {}).get("content")
+        if not isinstance(content, str):
+            raise ValueError("LLM response did not contain message content.")
+        return self._decode_json(content)
+
+    def _system_prompt(self) -> str:
+        schema = {
+            table.name: {
+                "aliases": list(table.aliases),
+                "columns": {
+                    column.name: {"type": column.type, "aliases": list(column.aliases)}
+                    for column in table.columns.values()
+                },
+            }
+            for table in self._schema.tables.values()
+        }
+        today = self._today.isoformat() if self._today else "unknown"
+        return (
+            "You are a semantic query planner. Convert the user's natural-language "
+            "question into JSON matching the QueryAST contract below. Never write SQL. "
+            "Use only tables and columns from the supplied schema. If the question is "
+            "ambiguous or unsupported, return {\"clarification\": \"one concise question\"}. "
+            f"Today is {today}. Schema: {json.dumps(schema, sort_keys=True)}. "
+            "JSON fields: type='select', source, select [{type:'column',name}], "
+            "aggregations [{type:'aggregation',function,column,alias}], filters "
+            "([{column,operator,value}] or {column,start,end}), having "
+            "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
+            "group_by [column], order_by [{column,direction:'ASC'|'DESC'}], "
+            "limit integer or null, status='inferred'."
+        )
+
+    def _decode_json(self, content: str) -> dict[str, Any]:
+        cleaned = content.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        decoded = json.loads(cleaned)
+        if not isinstance(decoded, dict):
+            raise ValueError("LLM output must be a JSON object.")
+        return decoded
+
+    def _ast_from_payload(self, payload: dict[str, Any]) -> QueryAST:
+        source = _required_string(payload, "source")
+        select = tuple(
+            ColumnExpression("column", _required_string(item, "name"))
+            for item in _list_of_dicts(payload.get("select", []), "select")
+        )
+        aggregations = tuple(
+            self._aggregation(item) for item in _list_of_dicts(payload.get("aggregations", []), "aggregations")
+        )
+        filters = tuple(self._predicate(item) for item in _list_of_dicts(payload.get("filters", []), "filters"))
+        having = tuple(
+            HavingPredicate(
+                left=self._aggregation(_required_dict(item, "left")),
+                operator=_required_string(item, "operator"),
+                value=item.get("value"),
+            )
+            for item in _list_of_dicts(payload.get("having", []), "having")
+        )
+        order_by = tuple(
+            OrderBy(
+                column=item.get("column"),
+                direction=SortDirection(str(item.get("direction", "ASC")).upper()),
+            )
+            for item in _list_of_dicts(payload.get("order_by", []), "order_by")
+        )
+        limit = payload.get("limit")
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+            raise ValueError("limit must be an integer or null")
+        date_filters = tuple(
+            DateRangePredicate(
+                column=_required_string(item, "column"),
+                start=date.fromisoformat(_required_string(item, "start")),
+                end=date.fromisoformat(_required_string(item, "end")),
+            )
+            for item in _list_of_dicts(payload.get("date_filters", []), "date_filters")
+        )
+        return QueryAST(
+            type=QueryType.SELECT,
+            source=source,
+            select=select or (ColumnExpression("column", "*"),),
+            aggregations=aggregations,
+            filters=filters + date_filters,
+            having=having,
+            group_by=tuple(str(value) for value in payload.get("group_by", [])),
+            order_by=order_by,
+            limit=limit,
+            status=str(payload.get("status", "inferred")),
+            matched_rules=("parser:llm",),
+        )
+
+    def _aggregation(self, item: dict[str, Any]) -> AggregationExpression:
+        return AggregationExpression(
+            type="aggregation",
+            function=_required_string(item, "function").upper(),
+            column=_required_string(item, "column"),
+            alias=item.get("alias"),
+        )
+
+    def _predicate(self, item: dict[str, Any]) -> Predicate:
+        return Predicate(
+            column=_required_string(item, "column"),
+            operator=_required_string(item, "operator").upper(),
+            value=item.get("value"),
+        )
+
+
+def _required_string(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{key} must be a non-empty string")
+    return value.strip()
+
+
+def _required_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    value = payload.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} must be an object")
+    return value
+
+
+def _list_of_dicts(value: Any, field: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise ValueError(f"{field} must be an array of objects")
+    return value
