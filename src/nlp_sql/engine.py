@@ -94,6 +94,13 @@ class NlpSqlEngine:
     ) -> PipelineResult:
         schema_candidates = self.search_schema(query)
         parsed = self._parse_with_hybrid_fallback(query, conversation)
+        parsed = self._with_trace(
+            parsed,
+            {
+                "schema_candidate_count": len(schema_candidates),
+                "parser": (parsed.interpretation or {}).get("parser", "deterministic"),
+            },
+        )
         if not parsed.success or parsed.ast is None:
             return self._attach_schema_candidates(parsed, schema_candidates)
         validation_error = self._validator.validate(parsed.ast)
@@ -103,6 +110,7 @@ class NlpSqlEngine:
                 ast=parsed.ast,
                 error=validation_error,
                 schema_candidates=schema_candidates,
+                trace=parsed.trace,
             )
         sql = self._compiler.compile(parsed.ast)
         safety_error = self._safety.validate_sql(sql)
@@ -132,6 +140,7 @@ class NlpSqlEngine:
                     candidate_count=parsed.candidate_count,
                 )
             ).to_dict(),
+            trace=parsed.trace,
         )
 
     def explain(
@@ -139,6 +148,13 @@ class NlpSqlEngine:
     ) -> PipelineResult:
         schema_candidates = self.search_schema(query)
         parsed = self._parse_with_hybrid_fallback(query, conversation)
+        parsed = self._with_trace(
+            parsed,
+            {
+                "schema_candidate_count": len(schema_candidates),
+                "parser": (parsed.interpretation or {}).get("parser", "deterministic"),
+            },
+        )
         if not parsed.success or parsed.ast is None:
             return self._attach_schema_candidates(parsed, schema_candidates)
         validation_error = self._validator.validate(parsed.ast)
@@ -148,6 +164,7 @@ class NlpSqlEngine:
                 ast=parsed.ast,
                 error=validation_error,
                 schema_candidates=schema_candidates,
+                trace=parsed.trace,
             )
         return PipelineResult(
             success=True,
@@ -166,6 +183,7 @@ class NlpSqlEngine:
                     candidate_count=parsed.candidate_count,
                 )
             ).to_dict(),
+            trace=parsed.trace,
         )
 
     def execute(
@@ -191,6 +209,7 @@ class NlpSqlEngine:
                 schema_candidates=parsed.schema_candidates,
                 confidence=parsed.confidence,
                 candidate_count=parsed.candidate_count,
+                trace=parsed.trace,
             )
         try:
             execution_plan = self._executor.explain(parsed.sql)
@@ -218,6 +237,7 @@ class NlpSqlEngine:
                         schema_candidates=parsed.schema_candidates,
                         confidence=repaired.confidence,
                         candidate_count=repaired.candidate_count,
+                        trace={**(parsed.trace or {}), "repair_attempted": True},
                     )
             else:
                 return PipelineResult(
@@ -230,6 +250,7 @@ class NlpSqlEngine:
                     schema_candidates=parsed.schema_candidates,
                     confidence=parsed.confidence,
                     candidate_count=parsed.candidate_count,
+                    trace={**(parsed.trace or {}), "repair_attempted": True},
                 )
         return PipelineResult(
             success=True,
@@ -242,6 +263,7 @@ class NlpSqlEngine:
             confidence=parsed.confidence,
             candidate_count=parsed.candidate_count,
             execution_plan=execution_plan,
+            trace={**(parsed.trace or {}), "execution_plan_available": True},
         )
 
     def _repair_after_execution_error(
@@ -278,6 +300,7 @@ class NlpSqlEngine:
             schema_candidates=parsed.schema_candidates,
             confidence=repaired.confidence,
             candidate_count=repaired.candidate_count,
+            trace={**(parsed.trace or {}), "repair_attempted": True},
         )
 
     def search_schema(self, query: str, top_k: int = 8) -> tuple[dict[str, object], ...]:
@@ -392,4 +415,24 @@ class NlpSqlEngine:
             adaptive_decision=result.adaptive_decision,
             confidence=result.confidence,
             candidate_count=result.candidate_count,
+            execution_plan=result.execution_plan,
+            trace=result.trace,
+        )
+
+    def _with_trace(self, result: PipelineResult, updates: dict[str, object]) -> PipelineResult:
+        return PipelineResult(
+            success=result.success,
+            ast=result.ast,
+            sql=result.sql,
+            error=result.error,
+            requires_clarification=result.requires_clarification,
+            interpretation=result.interpretation,
+            matched_rules=result.matched_rules,
+            rows=result.rows,
+            schema_candidates=result.schema_candidates,
+            adaptive_decision=result.adaptive_decision,
+            confidence=result.confidence,
+            candidate_count=result.candidate_count,
+            execution_plan=result.execution_plan,
+            trace={**(result.trace or {}), **updates},
         )
