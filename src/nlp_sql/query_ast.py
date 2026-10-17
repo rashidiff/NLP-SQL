@@ -29,6 +29,7 @@ class AggregationExpression:
     function: str
     column: str
     alias: str | None = None
+    distinct: bool = False
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class QueryAST:
     type: QueryType
     source: str
     joins: tuple[JoinExpression, ...] = ()
+    distinct: bool = False
     select: tuple[ColumnExpression, ...] = ()
     aggregations: tuple[AggregationExpression, ...] = ()
     filters: tuple[Predicate | DateRangePredicate, ...] = ()

@@ -29,6 +29,7 @@ class SqlCompiler:
         parameters: list[Any] = []
         sql = [
             "SELECT",
+            "DISTINCT" if ast.distinct else "",
             self._compile_select(ast),
             "FROM",
             self.dialect.quote_identifier(ast.source),
@@ -57,13 +58,14 @@ class SqlCompiler:
         if ast.limit is not None:
             sql.extend(["LIMIT", self.dialect.placeholder])
             parameters.append(ast.limit)
-        return SqlQuery(" ".join(sql), tuple(parameters))
+        return SqlQuery(" ".join(part for part in sql if part), tuple(parameters))
 
     def _compile_select(self, ast: QueryAST) -> str:
         parts: list[str] = []
         parts.extend(column.name for column in ast.select)
         for aggregation in ast.aggregations:
-            expression = f"{aggregation.function}({aggregation.column})"
+            distinct = "DISTINCT " if aggregation.distinct else ""
+            expression = f"{aggregation.function}({distinct}{aggregation.column})"
             if aggregation.alias:
                 expression += f" AS {aggregation.alias}"
             parts.append(expression)
@@ -140,7 +142,8 @@ class SqlCompiler:
     def _compile_having(self, ast: QueryAST, parameters: list[Any]) -> str:
         clauses: list[str] = []
         for predicate in ast.having:
-            left = f"{predicate.left.function}({predicate.left.column})"
+            distinct = "DISTINCT " if predicate.left.distinct else ""
+            left = f"{predicate.left.function}({distinct}{predicate.left.column})"
             clauses.append(f"{left} {predicate.operator} {self.dialect.placeholder}")
             parameters.append(predicate.value)
         return " AND ".join(clauses)
@@ -149,7 +152,8 @@ class SqlCompiler:
         parts: list[str] = []
         for order in ast.order_by:
             if order.aggregation is not None:
-                expression = f"{order.aggregation.function}({order.aggregation.column})"
+                distinct = "DISTINCT " if order.aggregation.distinct else ""
+                expression = f"{order.aggregation.function}({distinct}{order.aggregation.column})"
             else:
                 expression = order.column or ""
             parts.append(f"{expression} {order.direction.value}")

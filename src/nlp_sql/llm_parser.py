@@ -230,7 +230,7 @@ class LLMParser:
             f"Relevant retrieved schema context: {context}. "
             f"Recent conversation context: {history}. Resolve follow-up references using it. "
             "JSON fields: type='select', source, select [{type:'column',name}], "
-            "aggregations [{type:'aggregation',function,column,alias}], filters "
+            "distinct boolean, aggregations [{type:'aggregation',function,column,alias,distinct}], filters "
             "([{column,operator,value}] or {column,start,end}), having "
             "([{left:{type:'aggregation',function,column,alias},operator,value}]), "
             "where recursive filter expression {kind:'and'|'or'|'not'|'predicate', "
@@ -310,6 +310,7 @@ class LLMParser:
             type=QueryType.SELECT,
             source=source,
             joins=joins,
+            distinct=bool(payload.get("distinct", False)),
             select=select or (ColumnExpression("column", "*"),),
             aggregations=aggregations,
             filters=filters + date_filters,
@@ -328,6 +329,7 @@ class LLMParser:
             function=_required_string(item, "function").upper(),
             column=_required_string(item, "column"),
             alias=item.get("alias"),
+            distinct=bool(item.get("distinct", False)),
         )
 
     def _predicate(self, item: dict[str, Any]) -> Predicate:
