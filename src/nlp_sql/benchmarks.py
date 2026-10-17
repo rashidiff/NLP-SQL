@@ -25,6 +25,10 @@ class WorkloadReport:
     p95_latency_ms: float
     success_rate: float
     retrieval_stats: dict[str, object]
+    llm_queries: int = 0
+    repaired_queries: int = 0
+    clarification_queries: int = 0
+    execution_failures: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -34,6 +38,10 @@ class WorkloadReport:
             "p95_latency_ms": self.p95_latency_ms,
             "success_rate": self.success_rate,
             "retrieval_stats": self.retrieval_stats,
+            "llm_queries": self.llm_queries,
+            "repaired_queries": self.repaired_queries,
+            "clarification_queries": self.clarification_queries,
+            "execution_failures": self.execution_failures,
         }
 
 
@@ -97,11 +105,22 @@ class BenchmarkRunner:
     def run(self, name: str, workload: tuple[WorkloadQuery, ...]) -> WorkloadReport:
         latencies: list[float] = []
         successes = 0
+        llm_queries = 0
+        repaired_queries = 0
+        clarification_queries = 0
+        execution_failures = 0
         for query in workload:
             started = time.perf_counter()
             result = self._engine.parse(query.text)
             latencies.append((time.perf_counter() - started) * 1000)
             successes += 1 if result.success else 0
+            trace = result.trace or {}
+            llm_queries += int(trace.get("parser") == "llm")
+            repaired_queries += int(bool(trace.get("repair_attempted")))
+            clarification_queries += int(result.requires_clarification)
+            execution_failures += int(
+                result.error is not None and result.error.code == "DATABASE_EXECUTION_FAILED"
+            )
         sorted_latencies = sorted(latencies)
         p50 = _percentile(sorted_latencies, 0.50)
         p95 = _percentile(sorted_latencies, 0.95)
@@ -112,6 +131,10 @@ class BenchmarkRunner:
             p95_latency_ms=p95,
             success_rate=successes / len(workload) if workload else 0.0,
             retrieval_stats=self._engine.retrieval_stats(),
+            llm_queries=llm_queries,
+            repaired_queries=repaired_queries,
+            clarification_queries=clarification_queries,
+            execution_failures=execution_failures,
         )
 
     def write_reports(self, reports: tuple[WorkloadReport, ...], output_dir: Path) -> None:
@@ -130,6 +153,10 @@ class BenchmarkRunner:
                     f"- p50 latency ms: {report.p50_latency_ms:.3f}",
                     f"- p95 latency ms: {report.p95_latency_ms:.3f}",
                     f"- success rate: {report.success_rate:.3f}",
+                    f"- LLM queries: {report.llm_queries}",
+                    f"- repaired queries: {report.repaired_queries}",
+                    f"- clarification queries: {report.clarification_queries}",
+                    f"- execution failures: {report.execution_failures}",
                     "",
                 ]
             )
