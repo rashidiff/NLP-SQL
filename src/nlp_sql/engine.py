@@ -189,17 +189,41 @@ class NlpSqlEngine:
             execution_plan = self._executor.explain(parsed.sql)
             rows = self._executor.execute(parsed.sql, max_rows=max_rows)
         except Exception as exc:
-            return PipelineResult(
-                success=False,
-                ast=parsed.ast,
-                sql=parsed.sql,
-                error=QueryError("DATABASE_EXECUTION_FAILED", str(exc)),
-                interpretation=parsed.interpretation,
-                matched_rules=parsed.matched_rules,
-                schema_candidates=parsed.schema_candidates,
-                confidence=parsed.confidence,
-                candidate_count=parsed.candidate_count,
+            repaired = self._repair_after_execution_error(
+                query,
+                parsed,
+                str(exc),
+                conversation=conversation,
             )
+            if repaired is not None and repaired.sql is not None:
+                try:
+                    execution_plan = self._executor.explain(repaired.sql)
+                    rows = self._executor.execute(repaired.sql, max_rows=max_rows)
+                    parsed = repaired
+                except Exception as repair_exc:
+                    return PipelineResult(
+                        success=False,
+                        ast=repaired.ast,
+                        sql=repaired.sql,
+                        error=QueryError("DATABASE_EXECUTION_FAILED", str(repair_exc)),
+                        interpretation=repaired.interpretation,
+                        matched_rules=repaired.matched_rules,
+                        schema_candidates=parsed.schema_candidates,
+                        confidence=repaired.confidence,
+                        candidate_count=repaired.candidate_count,
+                    )
+            else:
+                return PipelineResult(
+                    success=False,
+                    ast=parsed.ast,
+                    sql=parsed.sql,
+                    error=QueryError("DATABASE_EXECUTION_FAILED", str(exc)),
+                    interpretation=parsed.interpretation,
+                    matched_rules=parsed.matched_rules,
+                    schema_candidates=parsed.schema_candidates,
+                    confidence=parsed.confidence,
+                    candidate_count=parsed.candidate_count,
+                )
         return PipelineResult(
             success=True,
             ast=parsed.ast,
@@ -211,6 +235,42 @@ class NlpSqlEngine:
             confidence=parsed.confidence,
             candidate_count=parsed.candidate_count,
             execution_plan=execution_plan,
+        )
+
+    def _repair_after_execution_error(
+        self,
+        query: str,
+        parsed: PipelineResult,
+        error: str,
+        *,
+        conversation: ConversationContext | None,
+    ) -> PipelineResult | None:
+        if self._llm_parser is None:
+            return None
+        repaired = self._llm_parser.parse(
+            query,
+            feedback=f"DATABASE_EXECUTION_FAILED: {error}",
+            schema_context=parsed.schema_candidates,
+            conversation=conversation,
+        )
+        if not repaired.success or repaired.ast is None:
+            return None
+        validation_error = self._validator.validate(repaired.ast)
+        if validation_error is not None:
+            return None
+        sql = self._compiler.compile(repaired.ast)
+        safety_error = self._safety.validate_sql(sql)
+        if safety_error is not None:
+            return None
+        return PipelineResult(
+            success=True,
+            ast=repaired.ast,
+            sql=sql,
+            interpretation=repaired.interpretation,
+            matched_rules=repaired.matched_rules + ("repair:execution_error",),
+            schema_candidates=parsed.schema_candidates,
+            confidence=repaired.confidence,
+            candidate_count=repaired.candidate_count,
         )
 
     def search_schema(self, query: str, top_k: int = 8) -> tuple[dict[str, object], ...]:
