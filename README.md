@@ -182,7 +182,12 @@ graph = SchemaGraph.from_registry(registry)
 - Retrieval evidence cannot directly produce SQL.
 - Nested boolean filter expressions support AND/OR/NOT and operators such as
   IN, LIKE, and IS NULL.
+- Typed subqueries support IN/NOT IN/EXISTS, and CTEs preserve parameterized
+  compilation and nested validation.
+- Window expressions support whitelisted ranking and analytic functions.
 - Joins are represented in the AST and validated before compilation.
+- Benchmark cases can compare ordered or unordered execution results with a
+  configurable floating-point tolerance.
 - SQLite execution is read-only and guarded by a row limit and timeout.
 - MCP-style tools call the same engine methods and cannot bypass validation.
 

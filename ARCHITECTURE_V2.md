@@ -22,7 +22,7 @@ contract.
              LLM Planner / Deterministic Fallback
                            |
                            v
-                QueryAST + Filter Tree
+           QueryAST + Filter/Relational Tree
                            |
                      Validator
                            |
@@ -79,6 +79,11 @@ opaque learned graph model.
 SQLite primary keys and foreign keys are extracted into the schema model and
 materialized as graph edges when present. Column profiling adds null ratios,
 distinct counts, ranges, and representative values to retrieval documents.
+
+The relational AST now models nested boolean filters, subqueries, CTEs,
+qualified multi-hop joins, DISTINCT, and validated window expressions. The
+evaluation runner can use expected result sets to measure execution-equivalence,
+including ordering and numeric tolerance.
 
 ## Adaptive Interpretation
 
