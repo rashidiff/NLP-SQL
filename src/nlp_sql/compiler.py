@@ -74,38 +74,7 @@ class SqlCompiler:
             return self._compile_filter_expression(ast.where, parameters)
         clauses: list[str] = []
         for predicate in ast.filters:
-            if isinstance(predicate, DateRangePredicate):
-                if predicate.start != date.min:
-                    clauses.append(f"{predicate.column} >= {self.dialect.placeholder}")
-                    parameters.append(predicate.start.isoformat())
-                if predicate.end != date.max:
-                    clauses.append(f"{predicate.column} < {self.dialect.placeholder}")
-                    parameters.append(predicate.end.isoformat())
-                continue
-            if predicate.operator == "BETWEEN":
-                start, end = predicate.value
-                clauses.append(
-                    f"{predicate.column} BETWEEN {self.dialect.placeholder} "
-                    f"AND {self.dialect.placeholder}"
-                )
-                parameters.extend([start, end])
-                continue
-            if isinstance(predicate.value, str) and predicate.operator in {"=", "!="}:
-                if "address" in predicate.column:
-                    clauses.append(
-                        f"LOWER(REPLACE(REPLACE({predicate.column}, ',', ''), '  ', ' ')) "
-                        f"{predicate.operator} LOWER({self.dialect.placeholder})"
-                    )
-                    parameters.append(predicate.value)
-                    continue
-                clauses.append(
-                    f"LOWER({predicate.column}) {predicate.operator} "
-                    f"LOWER({self.dialect.placeholder})"
-                )
-                parameters.append(predicate.value)
-                continue
-            clauses.append(f"{predicate.column} {predicate.operator} {self.dialect.placeholder}")
-            parameters.append(predicate.value)
+            clauses.append(self._compile_predicate(predicate, parameters))
         return " AND ".join(clauses)
 
     def _compile_filter_expression(
@@ -149,6 +118,16 @@ class SqlCompiler:
             parameters.extend(values)
             placeholders = ", ".join(self.dialect.placeholder for _ in values)
             return f"{predicate.column} IN ({placeholders})"
+        if (
+            isinstance(predicate.value, str)
+            and predicate.operator in {"=", "!="}
+            and "address" in predicate.column
+        ):
+            parameters.append(predicate.value)
+            return (
+                f"LOWER(REPLACE(REPLACE({predicate.column}, ',', ''), '  ', ' ')) "
+                f"{predicate.operator} LOWER({self.dialect.placeholder})"
+            )
         if predicate.operator in {"=", "!=", "LIKE", "NOT LIKE"} and isinstance(predicate.value, str):
             parameters.append(predicate.value)
             return (
