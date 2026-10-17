@@ -45,18 +45,19 @@ class ASTValidator:
         for join in ast.joins:
             if join.join_type not in {"INNER", "LEFT", "RIGHT", "FULL"}:
                 return QueryError("UNSUPPORTED_JOIN", f"Unsupported join type {join.join_type}.")
-            if not self._schema.has_table(join.table):
+            cte_columns = self._cte_columns(ast)
+            if not self._schema.has_table(join.table) and join.table not in cte_columns:
                 return QueryError("UNKNOWN_TABLE", f"Table '{join.table}' is not configured.")
             available_tables = {ast.source, *(item.table for item in ast.joins)}
             left_table = join.left_table or ast.source
             if left_table not in available_tables:
                 return QueryError("UNKNOWN_TABLE", f"Join table '{left_table}' is not configured.")
-            if not self._schema.has_column(left_table, join.left_column):
+            if not self._has_column(ast, left_table, join.left_column):
                 return QueryError(
                     "UNKNOWN_COLUMN",
                     f"Join column '{join.left_column}' is not valid for {left_table}.",
                 )
-            if not self._schema.has_column(join.table, join.right_column):
+            if not self._has_column(ast, join.table, join.right_column):
                 return QueryError(
                     "UNKNOWN_COLUMN",
                     f"Join column '{join.right_column}' is not valid for {join.table}.",
@@ -138,7 +139,11 @@ class ASTValidator:
     def _has_query_column(self, ast: QueryAST, reference: str) -> bool:
         if "." in reference:
             table, column = reference.split(".", 1)
-            allowed_tables = {ast.source, *(join.table for join in ast.joins)}
+            allowed_tables = {
+                ast.source,
+                *(join.table for join in ast.joins),
+                *self._cte_columns(ast),
+            }
             return table in allowed_tables and self._has_column(ast, table, column)
         if ast.source in self._cte_columns(ast):
             return reference in self._cte_columns(ast)[ast.source]
