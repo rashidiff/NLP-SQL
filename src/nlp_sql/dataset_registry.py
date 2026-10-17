@@ -7,7 +7,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from nlp_sql.executor import SQLiteExecutor
+from nlp_sql.conversation import ConversationContext
+from nlp_sql.engine import NlpSqlEngine
 from nlp_sql.retrieval import HybridSchemaRetriever, documents_from_schema
+from nlp_sql.result import PipelineResult, QueryError
 from nlp_sql.schema import SchemaRegistry
 
 
@@ -75,6 +78,73 @@ class DatasetRegistry:
                 )
         candidates.sort(key=lambda item: float(item["score"]), reverse=True)
         return tuple(candidates[:top_k])
+
+
+class RegistryQueryEngine:
+    """Route a query to one registered dataset before using the safe engine."""
+
+    def __init__(self, registry: DatasetRegistry) -> None:
+        self._registry = registry
+        self._engines: dict[str, NlpSqlEngine] = {}
+
+    def parse(
+        self, query: str, conversation: ConversationContext | None = None
+    ) -> PipelineResult:
+        dataset = self._resolve_dataset(query)
+        if dataset is None:
+            return self._ambiguity_result(query)
+        return self._engine(dataset).parse(query, conversation=conversation)
+
+    def explain(
+        self, query: str, conversation: ConversationContext | None = None
+    ) -> PipelineResult:
+        dataset = self._resolve_dataset(query)
+        if dataset is None:
+            return self._ambiguity_result(query)
+        return self._engine(dataset).explain(query, conversation=conversation)
+
+    def execute(
+        self,
+        query: str,
+        max_rows: int = 100,
+        conversation: ConversationContext | None = None,
+    ) -> PipelineResult:
+        dataset = self._resolve_dataset(query)
+        if dataset is None:
+            return self._ambiguity_result(query)
+        return self._engine(dataset).execute(
+            query, max_rows=max_rows, conversation=conversation
+        )
+
+    def _engine(self, dataset: DatasetInfo) -> NlpSqlEngine:
+        if dataset.id not in self._engines:
+            self._engines[dataset.id] = NlpSqlEngine(
+                schema=dataset.schema,
+                executor=dataset.executor(),
+                schema_retriever=dataset.retriever(),
+            )
+        return self._engines[dataset.id]
+
+    def _resolve_dataset(self, query: str) -> DatasetInfo | None:
+        candidates = self._registry.search_datasets(query, top_k=2)
+        if not candidates:
+            return None
+        if len(candidates) > 1:
+            top = float(candidates[0]["score"])
+            second = float(candidates[1]["score"])
+            if top - second < 0.15:
+                return None
+        return self._registry.get(str(candidates[0]["dataset_id"]))
+
+    def _ambiguity_result(self, query: str) -> PipelineResult:
+        return PipelineResult(
+            success=False,
+            requires_clarification=True,
+            error=QueryError(
+                "AMBIGUOUS_DATASET",
+                f"Could not confidently choose a dataset for: {query}",
+            ),
+        )
 
 
 def build_smart_city_demo_registry(root: Path) -> DatasetRegistry:

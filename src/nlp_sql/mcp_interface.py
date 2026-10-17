@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from nlp_sql.dataset_registry import DatasetRegistry
+from nlp_sql.dataset_registry import DatasetRegistry, RegistryQueryEngine
 from nlp_sql.engine import NlpSqlEngine
 
 
@@ -18,6 +18,9 @@ from nlp_sql.engine import NlpSqlEngine
 class NlpSqlMcpFacade:
     engine: NlpSqlEngine
     datasets: DatasetRegistry | None = None
+
+    def registry_engine(self) -> RegistryQueryEngine | None:
+        return RegistryQueryEngine(self.datasets) if self.datasets is not None else None
 
     def list_datasets(self) -> dict[str, Any]:
         if self.datasets is None:
