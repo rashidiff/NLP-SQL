@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 
 from nlp_sql.embedding_parser import EmbeddingParser
+from nlp_sql.feedback import QueryMemory, plan_signature
 from nlp_sql.result import PipelineResult, QueryError
 from nlp_sql.retrieval.base import SemanticSchemaRetriever
 from nlp_sql.schema import SchemaRegistry
@@ -60,11 +61,13 @@ class SemanticPlanner:
         schema: SchemaRegistry,
         parser: EmbeddingParser,
         retriever: SemanticSchemaRetriever,
+        memory: QueryMemory | None = None,
         config: SemanticPlannerConfig | None = None,
     ) -> None:
         self._schema = schema
         self._parser = parser
         self._retriever = retriever
+        self._memory = memory
         self._config = config or SemanticPlannerConfig.from_environment()
         self._random = random.SystemRandom()
 
@@ -161,8 +164,19 @@ class SemanticPlanner:
             default=0.0,
         )
         complexity_penalty = 0.02 * max(0, len(result.ast.joins) - 2)
+        memory_prior = (
+            self._memory.success_prior(query, plan_signature(result.ast)) if self._memory else 0.0
+        )
         exploration = self._random.random() * self._config.temperature * 0.04
-        return max(0.0, 0.55 * source_score + 0.35 * column_score + 0.10 - complexity_penalty + exploration)
+        return max(
+            0.0,
+            0.50 * source_score
+            + 0.32 * column_score
+            + 0.10
+            + 0.08 * memory_prior
+            - complexity_penalty
+            + exploration,
+        )
 
     def _is_ambiguous(self, beam: list[tuple[PipelineResult, float]]) -> bool:
         first, second = beam[0], beam[1]

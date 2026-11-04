@@ -17,6 +17,7 @@ from nlp_sql.datasets import (
 )
 from nlp_sql.embedding_parser import EmbeddingParser
 from nlp_sql.executor import SQLiteExecutor
+from nlp_sql.feedback import QueryMemory, QueryMemoryEntry, plan_signature
 from nlp_sql.llm_parser import LLMParser
 from nlp_sql.join_planner import JoinPlanner
 from nlp_sql.parser import RuleBasedParser
@@ -38,6 +39,7 @@ class NlpSqlEngine:
         schema_retriever: SemanticSchemaRetriever | None = None,
         llm_parser: LLMParser | None = None,
         dialect: SqlDialect | None = None,
+        query_memory: QueryMemory | None = None,
     ) -> None:
         self._schema = schema or SchemaRegistry.default()
         self._join_planner = JoinPlanner(self._schema)
@@ -47,6 +49,7 @@ class NlpSqlEngine:
         self._compiler = SqlCompiler(dialect=dialect or SqlDialect())
         self._safety = SafetyValidator()
         self._executor = executor
+        self._query_memory = query_memory
         llm_enabled = os.getenv("NLP_SQL_ENABLE_LLM", "0").lower() in {"1", "true", "yes"}
         self._llm_parser = (
             llm_parser
@@ -58,7 +61,7 @@ class NlpSqlEngine:
             documents_from_schema(self._schema)
         )
         self._semantic_planner = SemanticPlanner(
-            self._schema, self._embedding_parser, self._schema_retriever
+            self._schema, self._embedding_parser, self._schema_retriever, self._query_memory
         )
 
     @classmethod
@@ -96,8 +99,37 @@ class NlpSqlEngine:
             today=today,
             executor=SQLiteExecutor(db_path),
             schema_retriever=retriever,
+            query_memory=QueryMemory(db_path.with_suffix(".feedback.sqlite")),
             dialect=dialect,
         )
+
+    def record_feedback(
+        self,
+        query: str,
+        *,
+        success: bool,
+        plan: object | None = None,
+        score: float = 1.0,
+        error_code: str | None = None,
+    ) -> None:
+        """Record explicit local feedback without exposing database contents."""
+
+        if self._query_memory is None:
+            return
+        self._query_memory.record(
+            QueryMemoryEntry(
+                query=query,
+                plan_signature=plan_signature(plan) if plan is not None else "",
+                success=success,
+                score=max(0.0, min(1.0, score)),
+                error_code=error_code,
+            )
+        )
+
+    def feedback_history(self, limit: int = 50) -> tuple[dict[str, object], ...]:
+        if self._query_memory is None:
+            return ()
+        return self._query_memory.recent(limit=limit)
 
     def parse(
         self, query: str, conversation: ConversationContext | None = None

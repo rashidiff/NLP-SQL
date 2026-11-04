@@ -55,6 +55,20 @@ def build_server(engine: NlpSqlEngine):
 
         return engine.execute(query, max_rows=max_rows).to_dict()
 
+    @server.tool()
+    def record_feedback(query: str, accepted: bool, score: float = 1.0) -> dict[str, Any]:
+        """Store explicit user feedback for future local semantic ranking."""
+
+        result = engine.parse(query)
+        engine.record_feedback(
+            query,
+            success=accepted,
+            plan=result.ast,
+            score=score,
+            error_code=result.error.code if result.error is not None else None,
+        )
+        return {"recorded": True, "query": query, "accepted": accepted}
+
     return server
 
 
