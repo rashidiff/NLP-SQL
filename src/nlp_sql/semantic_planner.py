@@ -27,7 +27,7 @@ class SemanticPlannerConfig:
     clarification_margin: float = 0.035
 
     @classmethod
-    def from_environment(cls) -> "SemanticPlannerConfig":
+    def from_environment(cls) -> SemanticPlannerConfig:
         return cls(
             beam_width=max(2, int(os.getenv("NLP_SQL_SEMANTIC_BEAM_WIDTH", "6"))),
             temperature=max(0.0, float(os.getenv("NLP_SQL_SEMANTIC_TEMPERATURE", "0.18"))),

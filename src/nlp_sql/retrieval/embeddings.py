@@ -13,7 +13,6 @@ from typing import Any, Protocol
 
 from nlp_sql.retrieval.base import stable_hash, tokenize
 
-
 Vector = tuple[float, ...]
 _MODEL_CACHE: dict[str, Any] = {}
 

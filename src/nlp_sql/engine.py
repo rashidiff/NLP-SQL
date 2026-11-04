@@ -8,8 +8,8 @@ from pathlib import Path
 
 from nlp_sql.adaptive_interpretation import AdaptiveInterpreter
 from nlp_sql.catalog import profile_sqlite
-from nlp_sql.conversation import ConversationContext
 from nlp_sql.compiler import SqlCompiler, SqlDialect
+from nlp_sql.conversation import ConversationContext
 from nlp_sql.datasets import (
     HOUSING_COLUMN_ALIASES,
     HOUSING_TABLE_ALIASES,
