@@ -55,6 +55,25 @@ class SemanticPlanner:
         "largest": "large",
         "biggest": "large",
     }
+    _STRONG_CUES = {
+        "cheap",
+        "expensive",
+        "large",
+        "many",
+        "recent",
+        "latest",
+        "newest",
+        "oldest",
+        "top",
+        "bottom",
+        "average",
+        "avg",
+        "sum",
+        "total",
+        "count",
+        "maximum",
+        "minimum",
+    }
 
     def __init__(
         self,
@@ -91,7 +110,7 @@ class SemanticPlanner:
 
         candidates.sort(key=lambda item: item[1], reverse=True)
         beam = candidates[: self._config.beam_width]
-        if len(beam) > 1 and self._is_ambiguous(beam):
+        if len(beam) > 1 and self._is_ambiguous(query, beam):
             return PipelineResult(
                 success=False,
                 requires_clarification=True,
@@ -122,7 +141,7 @@ class SemanticPlanner:
             success=True,
             ast=selected.ast,
             interpretation=interpretation,
-            matched_rules=("planner:local-semantic",) + selected.matched_rules,
+            matched_rules=selected.matched_rules + ("planner:local-semantic",),
             confidence=probability,
             candidate_count=len(beam),
             trace={
@@ -185,7 +204,9 @@ class SemanticPlanner:
             + exploration,
         )
 
-    def _is_ambiguous(self, beam: list[tuple[PipelineResult, float]]) -> bool:
+    def _is_ambiguous(self, query: str, beam: list[tuple[PipelineResult, float]]) -> bool:
+        if set(re.findall(r"[a-z0-9_]+", query.lower())) & self._STRONG_CUES:
+            return False
         first, second = beam[0], beam[1]
         if first[0].ast is None or second[0].ast is None:
             return False
