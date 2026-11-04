@@ -84,6 +84,41 @@ python -m pip install -e ".[semantic]"
 The default semantic backend is a deterministic local hash embedding backend, so
 the project works without downloading a transformer model.
 
+## Local non-LLM semantic mode
+
+The default engine path is local and non-LLM. When `sentence-transformers` is
+installed, the engine prefers `all-MiniLM-L6-v2` for CPU-friendly schema
+embeddings; otherwise it uses the explicit degraded hash-embedding fallback.
+The semantic planner generates a beam of local AST candidates, ranks them with
+schema evidence and query memory, and explores close candidates probabilistically.
+SQL is still compiled only from validated `QueryAST` objects.
+
+Useful controls:
+
+```powershell
+$env:NLP_SQL_EMBEDDING_BACKEND = "auto"
+$env:NLP_SQL_SEMANTIC_TEMPERATURE = "0.18"
+$env:NLP_SQL_SEMANTIC_BEAM_WIDTH = "6"
+$env:NLP_SQL_ENABLE_LLM = "0"
+```
+
+The optional LLM planner is disabled by default and can only be enabled
+explicitly with `NLP_SQL_ENABLE_LLM=1`.
+
+## MCP server
+
+Install the MCP extras and run the stdio server:
+
+```bash
+python -m pip install -e ".[mcp,semantic]"
+nlp-sql-mcp --db data/housing.sqlite
+```
+
+The server exposes `inspect_schema`, `search_schema`, `plan_query`,
+`validate_plan`, `explain_query`, `execute_query`, and `record_feedback`. All
+tools use the same AST validation, parameterized compiler, and read-only safety
+layer.
+
 Optional LLM semantic parsing can be enabled with an OpenAI-compatible chat
 completion endpoint. The model returns a structured query plan, never SQL:
 
