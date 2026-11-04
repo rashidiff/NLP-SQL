@@ -9,13 +9,13 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from nlp_sql.retrieval.base import stable_hash, tokenize
 
 
 Vector = tuple[float, ...]
-_MODEL_CACHE: dict[str, object] = {}
+_MODEL_CACHE: dict[str, Any] = {}
 
 
 class EmbeddingBackend(Protocol):

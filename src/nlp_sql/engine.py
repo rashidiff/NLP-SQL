@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
 import os
+from datetime import date
 from pathlib import Path
 
 from nlp_sql.adaptive_interpretation import AdaptiveInterpreter

@@ -9,7 +9,7 @@ from typing import Any
 from nlp_sql.engine import NlpSqlEngine
 
 
-def build_server(engine: NlpSqlEngine):
+def build_server(engine: NlpSqlEngine) -> Any:
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP("nlp-sql")
