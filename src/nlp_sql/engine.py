@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+import os
 from pathlib import Path
 
 from nlp_sql.adaptive_interpretation import AdaptiveInterpreter
@@ -20,6 +21,7 @@ from nlp_sql.llm_parser import LLMParser
 from nlp_sql.join_planner import JoinPlanner
 from nlp_sql.parser import RuleBasedParser
 from nlp_sql.result import PipelineResult, QueryError
+from nlp_sql.semantic_planner import SemanticPlanner
 from nlp_sql.retrieval import HybridSchemaRetriever, documents_from_schema
 from nlp_sql.retrieval.base import SemanticSchemaRetriever
 from nlp_sql.safety import SafetyValidator
@@ -45,10 +47,18 @@ class NlpSqlEngine:
         self._compiler = SqlCompiler(dialect=dialect or SqlDialect())
         self._safety = SafetyValidator()
         self._executor = executor
-        self._llm_parser = llm_parser or LLMParser.from_environment(self._schema, today=today)
+        llm_enabled = os.getenv("NLP_SQL_ENABLE_LLM", "0").lower() in {"1", "true", "yes"}
+        self._llm_parser = (
+            llm_parser
+            if llm_parser is not None
+            else (LLMParser.from_environment(self._schema, today=today) if llm_enabled else None)
+        )
         self._adaptive_interpreter = AdaptiveInterpreter()
         self._schema_retriever = schema_retriever or HybridSchemaRetriever(
             documents_from_schema(self._schema)
+        )
+        self._semantic_planner = SemanticPlanner(
+            self._schema, self._embedding_parser, self._schema_retriever
         )
 
     @classmethod
@@ -366,6 +376,11 @@ class NlpSqlEngine:
                         return retry
             if llm_result.requires_clarification:
                 return llm_result
+        semantic = self._semantic_planner.plan(query)
+        if semantic.success and semantic.ast is not None:
+            return semantic
+        if semantic.requires_clarification:
+            return semantic
         embedded = self._embedding_parser.parse(query)
         if embedded.success and embedded.ast is not None:
             validation_error = self._validator.validate(embedded.ast)

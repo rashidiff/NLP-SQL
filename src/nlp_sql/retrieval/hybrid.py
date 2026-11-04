@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 
 from nlp_sql.retrieval.adaptive import AdaptiveVectorIndex
@@ -17,16 +18,33 @@ from nlp_sql.retrieval.embeddings import (
     EmbeddingBackend,
     EmbeddingStore,
     LocalHashEmbeddingBackend,
+    SentenceTransformerEmbeddingBackend,
 )
 from nlp_sql.retrieval.lexical import LexicalSchemaRetriever
 from nlp_sql.retrieval.vector_index import InMemoryVectorIndex
+
+
+def default_embedding_backend() -> EmbeddingBackend:
+    """Prefer local sentence embeddings and degrade explicitly when unavailable."""
+
+    requested = os.getenv("NLP_SQL_EMBEDDING_BACKEND", "auto").lower()
+    if requested in {"hash", "deterministic"}:
+        return LocalHashEmbeddingBackend()
+    model_name = os.getenv(
+        "NLP_SQL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    try:
+        import sentence_transformers  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError:
+        return LocalHashEmbeddingBackend()
+    return SentenceTransformerEmbeddingBackend(model_name=model_name)
 
 
 @dataclass
 class HybridSchemaRetriever:
     documents: tuple[SchemaDocument, ...]
     config: RetrievalConfig = RetrievalConfig()
-    embedding_backend: EmbeddingBackend = field(default_factory=LocalHashEmbeddingBackend)
+    embedding_backend: EmbeddingBackend = field(default_factory=default_embedding_backend)
     embedding_store: EmbeddingStore | None = None
     vector_index: AdaptiveVectorIndex = field(
         default_factory=lambda: AdaptiveVectorIndex(InMemoryVectorIndex())

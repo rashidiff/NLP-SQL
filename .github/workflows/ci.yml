@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and development dependencies
+        run: python -m pip install -e ".[dev,semantic,mcp]"
+      - name: Lint
+        run: ruff check .
+      - name: Typecheck
+        run: mypy
+      - name: Test
+        run: pytest -q
+      - name: MCP import smoke test
+        run: python -c "from nlp_sql.mcp_server import build_server; from nlp_sql.engine import NlpSqlEngine; build_server(NlpSqlEngine())"

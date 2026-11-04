@@ -15,6 +15,7 @@ from nlp_sql.retrieval.base import stable_hash, tokenize
 
 
 Vector = tuple[float, ...]
+_MODEL_CACHE: dict[str, object] = {}
 
 
 class EmbeddingBackend(Protocol):
@@ -75,9 +76,12 @@ class SentenceTransformerEmbeddingBackend:
         return len(probe)
 
     def embed(self, texts: tuple[str, ...]) -> tuple[Vector, ...]:
-        from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+        model = _MODEL_CACHE.get(self.model_name)
+        if model is None:
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
 
-        model = SentenceTransformer(self.model_name)
+            model = SentenceTransformer(self.model_name)
+            _MODEL_CACHE[self.model_name] = model
         encoded = model.encode(list(texts), normalize_embeddings=True)
         return tuple(tuple(float(value) for value in vector) for vector in encoded)
 
