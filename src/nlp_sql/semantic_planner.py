@@ -84,7 +84,10 @@ class SemanticPlanner:
             seen.add(signature)
             candidates.append((result, self._score(query, result)))
         if not candidates:
-            return PipelineResult(success=False, error=QueryError("SEMANTIC_NO_PLAN", "No local semantic plan was found."))
+            return PipelineResult(
+                success=False,
+                error=QueryError("SEMANTIC_NO_PLAN", "No local semantic plan was found."),
+            )
 
         candidates.sort(key=lambda item: item[1], reverse=True)
         beam = candidates[: self._config.beam_width]
@@ -147,7 +150,11 @@ class SemanticPlanner:
         assert result.ast is not None
         retrieved = self._retriever.search(query, top_k=8)
         source_score = max(
-            (candidate.score.final for candidate in retrieved if candidate.document.table == result.ast.source),
+            (
+                candidate.score.final
+                for candidate in retrieved
+                if candidate.document.table == result.ast.source
+            ),
             default=0.0,
         )
         column_names = {
@@ -182,7 +189,10 @@ class SemanticPlanner:
         first, second = beam[0], beam[1]
         if first[0].ast is None or second[0].ast is None:
             return False
-        return abs(first[1] - second[1]) <= self._config.clarification_margin and first[0].ast.to_dict() != second[0].ast.to_dict()
+        return (
+            abs(first[1] - second[1]) <= self._config.clarification_margin
+            and first[0].ast.to_dict() != second[0].ast.to_dict()
+        )
 
     def _sample_index(self, scores: list[float]) -> int:
         if self._config.temperature <= 0 or len(scores) == 1:

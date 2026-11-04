@@ -18,15 +18,15 @@ from nlp_sql.datasets import (
 from nlp_sql.embedding_parser import EmbeddingParser
 from nlp_sql.executor import SQLiteExecutor
 from nlp_sql.feedback import QueryMemory, QueryMemoryEntry, plan_signature
-from nlp_sql.llm_parser import LLMParser
 from nlp_sql.join_planner import JoinPlanner
+from nlp_sql.llm_parser import LLMParser
 from nlp_sql.parser import RuleBasedParser
 from nlp_sql.result import PipelineResult, QueryError
-from nlp_sql.semantic_planner import SemanticPlanner
 from nlp_sql.retrieval import HybridSchemaRetriever, documents_from_schema
 from nlp_sql.retrieval.base import SemanticSchemaRetriever
 from nlp_sql.safety import SafetyValidator
 from nlp_sql.schema import SchemaRegistry
+from nlp_sql.semantic_planner import SemanticPlanner
 from nlp_sql.validator import ASTValidator
 
 

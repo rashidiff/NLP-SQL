@@ -7,8 +7,8 @@ from datetime import date
 from typing import Any
 
 from nlp_sql.query_ast import (
-    DateRangePredicate,
     CteExpression,
+    DateRangePredicate,
     FilterExpression,
     Predicate,
     QueryAST,

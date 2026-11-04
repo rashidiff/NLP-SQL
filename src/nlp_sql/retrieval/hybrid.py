@@ -52,7 +52,10 @@ class HybridSchemaRetriever:
 
     @classmethod
     def with_sqlite_store(
-        cls, documents: tuple[SchemaDocument, ...], path: Path, config: RetrievalConfig | None = None
+        cls,
+        documents: tuple[SchemaDocument, ...],
+        path: Path,
+        config: RetrievalConfig | None = None,
     ) -> HybridSchemaRetriever:
         return cls(
             documents=documents,

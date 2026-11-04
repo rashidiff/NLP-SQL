@@ -184,7 +184,9 @@ class EmbeddingStore:
         source_hashes: dict[str, str],
         metadata: dict[str, dict[str, str]] | None = None,
     ) -> dict[str, EmbeddingRecord]:
-        existing = self.get_many(tuple(items), model_id=backend.model_id, source_hashes=source_hashes)
+        existing = self.get_many(
+            tuple(items), model_id=backend.model_id, source_hashes=source_hashes
+        )
         missing = [key for key in items if key not in existing]
         if not missing:
             return existing
