@@ -34,7 +34,7 @@ def default_embedding_backend() -> EmbeddingBackend:
         "NLP_SQL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
     )
     try:
-        import sentence_transformers  # type: ignore[import-not-found]  # noqa: F401
+        import sentence_transformers  # noqa: F401
     except ImportError:
         return LocalHashEmbeddingBackend()
     return SentenceTransformerEmbeddingBackend(model_name=model_name)
@@ -91,7 +91,10 @@ class HybridSchemaRetriever:
             document = self._by_key.get(key)
             if document is None:
                 continue
-            lexical_score = lexical.get(key).score.lexical if key in lexical else 0.0
+            lexical_candidate = lexical.get(key)
+            lexical_score = (
+                lexical_candidate.score.lexical if lexical_candidate is not None else 0.0
+            )
             embedding_score = embedding_scores.get(key, 0.0)
             parser_score = (parser_evidence or {}).get(key, 0.0)
             type_score = self._type_compatibility(query, document)

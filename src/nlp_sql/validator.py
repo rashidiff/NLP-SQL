@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from nlp_sql.query_ast import (
-    CteExpression,
+    ColumnExpression,
     DateRangePredicate,
     FilterExpression,
     Predicate,
@@ -160,12 +160,14 @@ class ASTValidator:
             columns = set(cte.columns)
             if not columns:
                 columns = {
-                    item.name for item in cte.query.select if hasattr(item, "name")
+                    item.name
+                    for item in cte.query.select
+                    if isinstance(item, ColumnExpression)
                 }
                 columns.update(
                     item.alias
                     for item in cte.query.select
-                    if getattr(item, "alias", None)
+                    if isinstance(item, WindowExpression) and item.alias is not None
                 )
             result[cte.name] = columns
         return result

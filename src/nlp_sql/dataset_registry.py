@@ -87,7 +87,7 @@ class DatasetRegistry:
                     }
                 )
         candidates.sort(
-            key=lambda item: (float(item["score"]), len(item["matched_terms"])),
+            key=lambda item: (_candidate_score(item), _matched_term_count(item)),
             reverse=True,
         )
         return tuple(candidates[:top_k])
@@ -150,11 +150,11 @@ class RegistryQueryEngine:
         if not candidates:
             return None
         if len(candidates) > 1:
-            top = float(candidates[0]["score"])
-            second = float(candidates[1]["score"])
+            top = _candidate_score(candidates[0])
+            second = _candidate_score(candidates[1])
             if top < 0.25 or top - second < 0.15:
                 return None
-        elif float(candidates[0]["score"]) < 0.25:
+        elif _candidate_score(candidates[0]) < 0.25:
             return None
         return self._registry.get(str(candidates[0]["dataset_id"]))
 
@@ -345,3 +345,13 @@ def _build_facilities_dataset(db_path: Path) -> DatasetInfo:
         db_path=db_path,
         semantic_metadata={"domain": "schools libraries public facilities city services"},
     )
+
+
+def _candidate_score(candidate: dict[str, object]) -> float:
+    value = candidate.get("score")
+    return float(value) if isinstance(value, (int, float, str)) else 0.0
+
+
+def _matched_term_count(candidate: dict[str, object]) -> int:
+    value = candidate.get("matched_terms")
+    return len(value) if isinstance(value, (tuple, list, set, frozenset)) else 0

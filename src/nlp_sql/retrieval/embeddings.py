@@ -18,8 +18,13 @@ _MODEL_CACHE: dict[str, Any] = {}
 
 
 class EmbeddingBackend(Protocol):
-    model_id: str
-    dimensions: int
+    @property
+    def model_id(self) -> str:
+        ...
+
+    @property
+    def dimensions(self) -> int:
+        ...
 
     def embed(self, texts: tuple[str, ...]) -> tuple[Vector, ...]:
         """Embed texts locally without calling external APIs."""
@@ -77,7 +82,7 @@ class SentenceTransformerEmbeddingBackend:
     def embed(self, texts: tuple[str, ...]) -> tuple[Vector, ...]:
         model = _MODEL_CACHE.get(self.model_name)
         if model is None:
-            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+            from sentence_transformers import SentenceTransformer
 
             model = SentenceTransformer(self.model_name)
             _MODEL_CACHE[self.model_name] = model
