@@ -50,7 +50,59 @@ Natural-language query
 Retrieval and telemetry can inform explanations and future adaptive ranking, but
 they must not bypass validation.
 
-## Installation
+## One-command startup
+
+Prerequisites: Python 3.11+ with pip/venv support and internet access for the
+first dependency installation and Kaggle dataset download. On systems where
+`python` is unavailable, use `python3` in the commands below. Linux distributions
+may require their `python3-venv` package.
+
+Clone once and enter the checkout:
+
+```bash
+git clone https://github.com/rashidiff/NLP-SQL.git
+cd NLP-SQL
+```
+
+Then, on Windows, macOS, or Linux, run this same command on every visit:
+
+```bash
+python start.py
+```
+
+It creates/reuses `.venv`, installs the core package, prepares `data/housing.sqlite`
+only if absent, and starts the HTTP API at `http://127.0.0.1:8000`.
+No environment activation is needed. Send JSON POST requests to `/parse`,
+`/explain`, or `/execute` (for example `{"query":"show top 5 properties by sale price"}`).
+The root URL is not a browser UI. Stop with Ctrl+C.
+
+Existing databases and environment variables are preserved. A failed initial
+build is discarded so the same command can retry safely. Dependency installation
+is repeated when `pyproject.toml` or the selected extras change; use `--refresh`
+to repair or reinstall dependencies explicitly. Repeat runs with unchanged setup
+skip installation and dataset preparation. Run only one bootstrap process per checkout.
+
+Options (also available through `python start.py --help`):
+
+```bash
+python start.py --port 8080
+python start.py --extras dev,mcp
+python start.py --setup-only
+python start.py --refresh
+python start.py --db data/my-housing.sqlite
+```
+
+Relative database paths are resolved from the checkout, even when the script is
+invoked from another directory. A supplied existing database must use the housing
+schema. Optional `semantic` extras install sentence-transformers and may download
+a model on first use; the default core setup uses local hash embeddings.
+`--setup-only` prepares the same environment and database without starting a server.
+For subsequent CLI work without activation, use `.venv/Scripts/python -m nlp_sql`
+on Windows or `.venv/bin/python -m nlp_sql` on macOS/Linux, followed by a CLI command.
+The launcher starts the HTTP API; the optional MCP server still uses its separate
+entry point documented below.
+
+## Manual installation
 
 ```bash
 git clone https://github.com/rashidiff/NLP-SQL.git
